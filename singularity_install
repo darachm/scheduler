@@ -1,0 +1,4 @@
+# this is for figuring out what to do in a singularity build for
+# portability
+
+pip install python-igraph
