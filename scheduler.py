@@ -50,22 +50,26 @@ if __name__ == "__main__":
   all_persons = set()
   all_upstream = set()
   all_upstream_m = set()
+  all_down_m = set()
 
   for meet, persons in persons_per_meeting.items():
     edge_list.append(( source_vertex, meet+"_m" ))
+    edge_list.append(( meet+"_d", goal_vertex ))
     all_upstream_m.add(meet+"_m")
+    all_down_m.add(meet+"_m")
+
     possible_times = set(times_per_person[persons[0]])
     for each_person in persons[1:]:
-      all_persons.add(each_person)
       possible_times = possible_times & set(times_per_person[each_person])
+
     for i in possible_times:
-      edge_list.append(( meet+"_"+i, goal_vertex))
+      edge_list.append(( meet+"_"+i, meet+"_d"))
       edge_list.append(( meet+"_m", meet+"_"+i+"_upstream" ))
       all_upstream.add(meet+"_"+i+"_upstream")
       for j in persons:
-        all_persons.add(j)
-        edge_list.append(( j, meet+"_"+i ))
-        edge_list.append(( meet+"_"+i+"_upstream", j ))
+        all_persons.add(j+"_"+i)
+        edge_list.append(( j+"_"+i, meet+"_"+i ))
+        edge_list.append(( meet+"_"+i+"_upstream", j+"_"+i ))
 
   verticies = set()
 
@@ -96,6 +100,18 @@ if __name__ == "__main__":
 
   i = 0
   for j in g.get_edgelist():
+    if j[0] in set([name_to_id[x] for x in all_upstream_m]):
+      capacities[i] = 1
+    i += 1
+
+  i = 0
+  for j in g.get_edgelist():
+    if j[0] in set([name_to_id[x] for x in all_down_m]):
+      capacities[i] = 1
+    i += 1
+
+  i = 0
+  for j in g.get_edgelist():
     if j[0] in set([name_to_id[x] for x in all_persons]):
       capacities[i] = 1
     i += 1
@@ -106,11 +122,6 @@ if __name__ == "__main__":
       capacities[i] = 0.25
     i += 1
 
-  i = 0
-  for j in g.get_edgelist():
-    if j[0] in set([name_to_id[x] for x in all_upstream_m]):
-      capacities[i] = 1
-    i += 1
 
   g.es["capacity"] = capacities
 
