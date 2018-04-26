@@ -108,11 +108,9 @@ if __name__ == "__main__":
       capacities[i] = 1
     if j[0] in set([name_to_id[x] for x in all_meetingBYtime]):
       capacities[i] = len(g.incident(j[0],mode="IN"))
-#    if j[0] in set([name_to_id[x] for x in all_roomsBYtime]):
-#      capacities[i] = 1
+    if j[0] in set([name_to_id[x] for x in all_roomsBYtime]):
+      capacities[i] = 1#len(g.incident(j[0],mode="IN"))
     i += 1
-
-  print(list(zip([id_to_name[x]+" -> "+id_to_name[y] for x,y in g.get_edgelist()],capacities)))
 
   g.es["capacity"] = capacities
 
