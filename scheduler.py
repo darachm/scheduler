@@ -4,8 +4,6 @@ import igraph
 import argparse
 import csv
 
-# 
-
 # Read in 
 
 #main
@@ -17,14 +15,16 @@ import csv
 
 if __name__ == "__main__":
   parser = argparse.ArgumentParser()
-  parser.add_argument('--meetings',type=str)
-  parser.add_argument('--schedules',type=str)
+  parser.add_argument('--meetings',required=True,type=str)
+  parser.add_argument('--schedules',required=True,type=str)
   args = parser.parse_args()
 
   with open(args.meetings,"r") as f:
     meetings = list(csv.reader(f))[1:]
   with open(args.schedules,"r") as f:
     schedules = list(csv.reader(f))[1:]
+
+  rooms = ["r1","r2"]
 
   persons_per_meeting = {}
   times_per_person = {}
@@ -48,28 +48,32 @@ if __name__ == "__main__":
   goal_vertex = "goal"
 
   all_persons = set()
-  all_upstream = set()
-  all_upstream_m = set()
-  all_down_m = set()
+  all_personBYtime = set()
+  all_meetingBYtime = set()
+  all_roomsBYtime = set()
+
+  for person, times in times_per_person.items():
+    all_persons.add(person)
+    edge_list.append(( source_vertex, person ))
+    for t in times:
+      edge_list.append(( person, person+"_"+t ))
+      all_personBYtime.add(person+"_"+t)
 
   for meet, persons in persons_per_meeting.items():
-    edge_list.append(( source_vertex, meet+"_m" ))
-    edge_list.append(( meet+"_d", goal_vertex ))
-    all_upstream_m.add(meet+"_m")
-    all_down_m.add(meet+"_m")
 
     possible_times = set(times_per_person[persons[0]])
     for each_person in persons[1:]:
       possible_times = possible_times & set(times_per_person[each_person])
+    print(possible_times)
 
-    for i in possible_times:
-      edge_list.append(( meet+"_"+i, meet+"_d"))
-      edge_list.append(( meet+"_m", meet+"_"+i+"_upstream" ))
-      all_upstream.add(meet+"_"+i+"_upstream")
-      for j in persons:
-        all_persons.add(j+"_"+i)
-        edge_list.append(( j+"_"+i, meet+"_"+i ))
-        edge_list.append(( meet+"_"+i+"_upstream", j+"_"+i ))
+    for t in possible_times:
+      all_meetingBYtime.add(meet+"_"+t)
+      for p in persons:
+        edge_list.append(( p+"_"+t, meet+"_"+t ))
+      for r in rooms:
+        edge_list.append(( meet+"_"+t, r+"_"+t ))
+        edge_list.append(( r+"_"+t, goal_vertex ))
+        all_roomsBYtime.add(r+"_"+t)
 
   verticies = set()
 
@@ -100,28 +104,15 @@ if __name__ == "__main__":
 
   i = 0
   for j in g.get_edgelist():
-    if j[0] in set([name_to_id[x] for x in all_upstream_m]):
+    if j[0] in set([name_to_id[x] for x in all_personBYtime]):
+      capacities[i] = 1
+    if j[0] in set([name_to_id[x] for x in all_meetingBYtime]):
+      capacities[i] = 1
+    if j[0] in set([name_to_id[x] for x in all_roomsBYtime]):
       capacities[i] = 1
     i += 1
 
-  i = 0
-  for j in g.get_edgelist():
-    if j[0] in set([name_to_id[x] for x in all_down_m]):
-      capacities[i] = 1
-    i += 1
-
-  i = 0
-  for j in g.get_edgelist():
-    if j[0] in set([name_to_id[x] for x in all_persons]):
-      capacities[i] = 1
-    i += 1
-
-  i = 0
-  for j in g.get_edgelist():
-    if j[0] in set([name_to_id[x] for x in all_upstream]):
-      capacities[i] = 0.25
-    i += 1
-
+#      capacities[i] = 1/( len(g.incident(j[1],mode="IN")))
 
   g.es["capacity"] = capacities
 
