@@ -122,8 +122,9 @@ if __name__ == "__main__":
 
   print(flow.flow)
 
-  layout = g.layout("kk")
-  igraph.plot(g, "tmp.png", layout = layout, edge_width=[0.1+2*width for width in g.es["width"]])
+  layout = g.layout("fr")
+  igraph.plot(g, "tmp.png", layout = layout, 
+    edge_width=[0.1+2*width for width in g.es["width"]])
 
 #  print(meetings)
 #  print(schedules)
