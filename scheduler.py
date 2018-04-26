@@ -109,7 +109,7 @@ if __name__ == "__main__":
     if j[0] in set([name_to_id[x] for x in all_meetingBYtime]):
       capacities[i] = len(g.incident(j[0],mode="IN"))
     if j[0] in set([name_to_id[x] for x in all_roomsBYtime]):
-      capacities[i] = 1#len(g.incident(j[0],mode="IN"))
+      capacities[i] = len(g.incident(j[0],mode="IN"))
     i += 1
 
   g.es["capacity"] = capacities
