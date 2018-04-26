@@ -99,7 +99,7 @@ if __name__ == "__main__":
   g.vs["name"] = [id_to_name[v.index] for v in list(g.vs)]
   g.vs["label"] = g.vs["name"]
 
-  g.es["capacity"] = None
+  g.es["capacity"] = 1000
   capacities = g.es["capacity"]
 
   i = 0
@@ -107,12 +107,12 @@ if __name__ == "__main__":
     if j[0] in set([name_to_id[x] for x in all_personBYtime]):
       capacities[i] = 1
     if j[0] in set([name_to_id[x] for x in all_meetingBYtime]):
-      capacities[i] = 1
-    if j[0] in set([name_to_id[x] for x in all_roomsBYtime]):
-      capacities[i] = 1
+      capacities[i] = len(g.incident(j[0],mode="IN"))
+#    if j[0] in set([name_to_id[x] for x in all_roomsBYtime]):
+#      capacities[i] = 1
     i += 1
 
-#      capacities[i] = 1/( len(g.incident(j[1],mode="IN")))
+  print(list(zip([id_to_name[x]+" -> "+id_to_name[y] for x,y in g.get_edgelist()],capacities)))
 
   g.es["capacity"] = capacities
 
@@ -123,7 +123,7 @@ if __name__ == "__main__":
   print(flow.flow)
 
   layout = g.layout("kk")
-  igraph.plot(g, "tmp.png", layout = layout)
+  igraph.plot(g, "tmp.png", layout = layout, edge_width=[0.1+2*width for width in g.es["width"]])
 
 #  print(meetings)
 #  print(schedules)
