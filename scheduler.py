@@ -4,7 +4,7 @@ import igraph
 import argparse
 import csv
 
-# Read in 
+# REFACTOR AND DOCUMENT
 
 #main
 #  take cli arguments
@@ -56,20 +56,23 @@ if __name__ == "__main__":
 
   times_per_person = {}
   for schedule in schedules:
-    try:
-      times_per_person[schedule[0]].add(schedule[1])
-    except:
-      times_per_person[schedule[0]] = set([schedule[1]])
+    person_times = schedule[1].split()
+    for this_person_time in person_times:
+      try:
+        times_per_person[schedule[0]].add(this_person_time)
+      except:
+        times_per_person[schedule[0]] = set([this_person_time])
 
   times_per_room = {}
   for room in rooms:
-    try:
-      times_per_room[room[0]].add(room[1])
-    except:
-      times_per_room[room[0]] = set(room[1])
+    room_times = room[1].split()
+    for this_room_time in room_times:
+      try:
+        times_per_room[room[0]].add(this_room_time)
+      except:
+        times_per_room[room[0]] = set([this_room_time])
 
   graph_lists = graph_list()
-#  graph_lists.el = [] #{ "el":[], "tl0":[], "tl1":[], "cl":[] }
   source_vertex = "source"
   goal_vertex = "goal"
   max_capacity = 1000
@@ -97,19 +100,19 @@ if __name__ == "__main__":
             graph_lists = append_graph_list(graph_lists,
               ( meet+"_"+possible_time+"_"+room ,
                 room+"_"+possible_time ), 
-              "meet_time_room", "room_time", 1 )
+              "meet_time_room", "room_time", 0.1 )
             graph_lists = append_graph_list(graph_lists,
               ( room+"_"+possible_time , 
                 goal_vertex ), 
-              "room_time", "goal", 1 )
+              "room_time", "goal", 0.1 )
             graph_lists = append_graph_list(graph_lists,
               ( meet+"_"+possible_time+"_"+room ,
                 meet ), 
-              "meet_time_room", "meet", len(meet_persons)-1 )
+              "meet_time_room", "meet", len(meet_persons)-0.1 )
             graph_lists = append_graph_list(graph_lists,
               ( meet ,
                 goal_vertex ), 
-              "meet", "goal", len(meet_persons)-1 )
+              "meet", "goal", len(meet_persons)-0.1 )
 
 # Build index
   verticies = set()
@@ -158,8 +161,7 @@ if __name__ == "__main__":
 
   layout = g.layout("kk")
   igraph.plot(g, "tmp.png", layout = layout, 
-    edge_width=[0.1+2*width for width in g.es["width"]])
-
+    edge_width=[0.0+3*width for width in g.es["width"]])
 
   tmp = [ ( g.vs.find(name=es.source)["type"], 
             id_to_name[es.source], id_to_name[es.target], 
