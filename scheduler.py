@@ -6,12 +6,6 @@ import csv
 
 # REFACTOR AND DOCUMENT
 
-#main
-#  take cli arguments
-#  read a folder of gcal zips, unzip and read and parse
-#  build bipartite graph of people and times
-#  build as flow problem
-#  see if flow problem can eliminate two people times things
 
 def read_csv_to_list(path):
   with open(path,"r") as f:
@@ -38,8 +32,14 @@ if __name__ == "__main__":
   parser.add_argument('--rooms',required=True,type=str)
   parser.add_argument('--debug',default=1,type=int)
   args = parser.parse_args()
-
   debug = args.debug
+
+#main
+#  take cli arguments
+#  read a folder of gcal zips, unzip and read and parse
+#  build bipartite graph of people and times
+#  build as flow problem
+#  see if flow problem can eliminate two people times things
 
   meetings = read_csv_to_list(args.meetings)
   schedules = read_csv_to_list(args.schedules)
