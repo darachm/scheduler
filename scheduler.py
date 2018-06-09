@@ -97,6 +97,14 @@ def read_dir_of_zipped_icals(path):
                 read_zipped_ical(zipped_ical)
     return(return_dict)
 
+def read_csv_as_meetings(path):
+    with open(path,"r") as f:
+        meetings = list(csv.reader(f))[1:]
+    return( list( map( 
+        lambda x: [x[0].strip(), re.split(r"\s", x[1].strip())] , 
+        meetings
+        ) ) )
+
 if __name__ == "__main__":
 
     parser = argparse.ArgumentParser()
@@ -110,12 +118,10 @@ if __name__ == "__main__":
     people_datetimes = read_dir_of_zipped_icals(args.people)
     room_datetimes   = read_dir_of_zipped_icals(args.rooms)
 
+    meetings = read_csv_as_meetings("meetings.csv")
 
     exit();
 
-    meetings = read_csv_to_list(args.meetings)
-    schedules = read_csv_to_list(args.schedules)
-    rooms = read_csv_to_list(args.rooms)
 
     persons_per_meeting = {}
     for meet in meetings:
