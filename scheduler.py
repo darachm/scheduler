@@ -94,7 +94,8 @@ if __name__ == "__main__":
     debug = args.debug
 
     people_datetimes = read_dir_of_zipped_icals(args.people)
-    print(people_datetimes)
+    room_datetimes   = read_dir_of_zipped_icals(args.rooms)
+    print(room_datetimes)
 
 
     exit();
