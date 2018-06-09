@@ -28,7 +28,7 @@ def append_graph_list(gl,nel,ntl0,ntl1,ncl):
 
 # Regex for finding the start and end times in date ranges from
 # google ical format
-find_time_range = re.compile(r"BEGIN:VEVENT.*?DTSTART:([\dT]+Z).*?DTEND:([\dT]+Z).*?END:VEVENT")
+find_time_range = re.compile(r"BEGIN:VEVENT.*?DTSTART(?:;TZID=(?P<start_tz>[^:]+))?:(?P<start>[\dT]+Z?).*?DTEND(?:;TZID=(?P<end_tz>[^:]+))?:(?P<end>[\dT]+Z?).*?END:VEVENT")
 
 # This takes an ical file, finds the start and end times, then cuts
 # them up into blocks of a certain minutes resolution, default 15.
@@ -38,7 +38,7 @@ def parse_ical_to_datetimes(string,minute_resolution=15):
     # string in for each ical
     for i in find_time_range.finditer(string.decode("utf-8").replace("\r\n","")):
         # The two groups should match
-        (start, end) = i.groups()
+        (start, end) = (i.group("start"), i.group("end"))
         # They each get parsed... is there a way to `map` this?
         (start, end) = (iso8601.parse_date(start), 
             iso8601.parse_date(end)) 
@@ -95,7 +95,7 @@ if __name__ == "__main__":
 
     people_datetimes = read_dir_of_zipped_icals(args.people)
     room_datetimes   = read_dir_of_zipped_icals(args.rooms)
-    print(room_datetimes)
+    print(room_datetimes.keys())
 
 
     exit();
