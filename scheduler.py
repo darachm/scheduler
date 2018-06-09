@@ -9,6 +9,7 @@ import re
 import iso8601
 import math
 import datetime
+from dateutil.tz import gettz
 
 # REFACTOR AND DOCUMENT
 
@@ -30,9 +31,11 @@ def append_graph_list(gl,nel,ntl0,ntl1,ncl):
 # google ical format
 find_time_range = re.compile(r"BEGIN:VEVENT.*?DTSTART(?:;TZID=(?P<start_tz>[^:]+))?:(?P<start>[\dT]+Z?).*?DTEND(?:;TZID=(?P<end_tz>[^:]+))?:(?P<end>[\dT]+Z?).*?END:VEVENT")
 
+# TODO FIX timezone issues. Currently it ignores.
+
 # This takes an ical file, finds the start and end times, then cuts
 # them up into blocks of a certain minutes resolution, default 15.
-def parse_ical_to_datetimes(string,minute_resolution=15):
+def parse_ical_to_datetimes(string,minute_resolution=30):
     possible_datetimes = list()
     # We decode as utf8 and replace all line endings to slurp a 
     # string in for each ical
@@ -42,8 +45,17 @@ def parse_ical_to_datetimes(string,minute_resolution=15):
         # They each get parsed... is there a way to `map` this?
         (start, end) = (iso8601.parse_date(start), 
             iso8601.parse_date(end)) 
+        # Set timezones
+        if i.group("start_tz") == None:
+            start = start.replace(tzinfo=datetime.timezone.utc)
+        else:
+            start = start.replace(tzinfo=gettz(name=i.group("start_tz")))
+        if i.group("end_tz") == None:
+            end = end.replace(tzinfo=datetime.timezone.utc)
+        else:
+            end = end.replace(tzinfo=gettz(name=i.group("end_tz")))
         # Then we round the minutes of the start date to the next
-        # certain minutes window
+        # certain minutes window, and set the timezone if needed
         this_datetime = start.replace(
             minute=math.ceil(start.minute/minute_resolution)*
                 minute_resolution
@@ -51,7 +63,9 @@ def parse_ical_to_datetimes(string,minute_resolution=15):
         # While it ain't over, 
         while this_datetime < end:
             # we append this block of time
-            possible_datetimes.append(this_datetime)
+            possible_datetimes.append(\
+                this_datetime.astimezone(datetime.timezone.utc)
+                )
             # and increment to the next block of time
             this_datetime += datetime.timedelta(minutes=minute_resolution)
     # So then we return the list of blocks of time this person should
@@ -95,7 +109,6 @@ if __name__ == "__main__":
 
     people_datetimes = read_dir_of_zipped_icals(args.people)
     room_datetimes   = read_dir_of_zipped_icals(args.rooms)
-    print(room_datetimes.keys())
 
 
     exit();
