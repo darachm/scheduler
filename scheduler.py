@@ -13,19 +13,6 @@ from dateutil.tz import gettz
 
 # REFACTOR AND DOCUMENT
 
-class graph_list():
-    def __init__(self):
-        self.el = []
-        self.tl0 = []
-        self.tl1 = []
-        self.cl = []
-
-def append_graph_list(gl,nel,ntl0,ntl1,ncl):
-    gl.el.append(nel)
-    gl.tl0.append(ntl0)
-    gl.tl1.append(ntl1)
-    gl.cl.append(ncl)
-    return(gl)
 
 # Regex for finding the start and end times in date ranges from
 # google ical format
@@ -85,7 +72,7 @@ def read_zipped_ical(zipped_ical):
                 parsed_ical.extend(parse_ical_to_datetimes(
                         ical_file.read()
                     )   )
-    return(parsed_ical)
+    return(set(parsed_ical))
 
 # This reads a dir of zipped files and if it's a zip then tries to
 # handle it
@@ -93,17 +80,32 @@ def read_dir_of_zipped_icals(path):
     return_dict = {}
     for zipped_ical in os.scandir(path):
         if zipped_ical.name.endswith('.zip'):
-            return_dict[zipped_ical.name.replace(".zip","")] = \
-                read_zipped_ical(zipped_ical)
+            return_dict[zipped_ical.name
+                    .replace(".zip","")
+                    .replace("@nyu.edu.ical","")
+                ] = read_zipped_ical(zipped_ical)
     return(return_dict)
 
 def read_csv_as_meetings(path):
     with open(path,"r") as f:
         meetings = list(csv.reader(f))[1:]
     return( list( map( 
-        lambda x: [x[0].strip(), re.split(r"\s", x[1].strip())] , 
+        lambda x: [x[0].strip(), set(re.split(r"\s", x[1].strip()))] , 
         meetings
         ) ) )
+
+class graph_list():
+    def __init__(self):
+        self.el = []
+        self.tl0 = []
+        self.tl1 = []
+        self.cl = []
+    def append(self,nel,ntl0,ntl1,ncl):
+        self.el.append(nel)   # list of tuples of edges
+        self.tl0.append(ntl0) # type of source
+        self.tl1.append(ntl1) # type of target
+        self.cl.append(ncl)   # list of capacity of that edge
+        return(self)
 
 if __name__ == "__main__":
 
@@ -117,11 +119,56 @@ if __name__ == "__main__":
 
     people_datetimes = read_dir_of_zipped_icals(args.people)
     room_datetimes   = read_dir_of_zipped_icals(args.rooms)
+    meetings         = read_csv_as_meetings("meetings.csv")
 
-    meetings = read_csv_as_meetings("meetings.csv")
+    graph_lists = graph_list()
+    source_vertex = "source"
+    goal_vertex = "goal"
+    max_capacity = 1000
+
+    for each_meeting in meetings:
+        this_meeting_id = each_meeting[0]
+        this_meeting_possible_times = set()
+        graph_lists.append( ( this_meeting_id, goal_vertex ),
+            "meeting", "goal", len(each_meeting[1])-1 )
+        for each_participant in each_meeting[1]:
+            this_meeting_possible_times = \
+                this_meeting_possible_times.union(\
+                    people_datetimes[each_participant])
+        for this_room in room_datetimes.keys():
+            for each_meeting_time in this_meeting_possible_times:
+                graph_lists.append( ( \
+                    this_meeting_id+"_"+each_meeting_time.isoformat()+"_"+this_room,
+                    this_meeting_id ),
+                    "meeting_time_room", "meeting", len(each_meeting[1])-1 )
+            z = this_meeting_possible_times.union(\
+                room_datetimes[this_room])
+            for this_time in z:
+                graph_lists.append( ( \
+                    this_room+"_"+this_time.isoformat(), goal_vertex ),
+                    "room_time", "goal", 1 )
+            for each_participant in each_meeting[1]:
+                for this_time in z.union( people_datetimes[each_participant]):
+                    graph_lists.append( ( \
+                        each_participant+"_"+this_time.isoformat() ,
+                        this_meeting_id+"_"+this_time.isoformat()+"_"+this_room ) ,
+                        "person_time", "meeting_time_room", 1 )
+                    graph_lists.append( ( \
+                        source_vertex,
+                        each_participant+"_"+this_time.isoformat() ),
+                        "source", "person_time", 1 )
+
+
+    for i in graph_lists.el:
+        print(i)
+
+#                graph_lists.append( ( this_meeting_id+"_"+i.isoformat()+"_"))
+
+#    graph_lists = append_graph_list(graph_lists,
+#        ( meet+"_"+possible_time+"_"+room, meet ), 
+#        "meet_time_room", "meet", len(meet_persons)-0.1 )
 
     exit();
-
 
     persons_per_meeting = {}
     for meet in meetings:
@@ -150,10 +197,6 @@ if __name__ == "__main__":
             except:
                 times_per_room[room[0]] = set([this_room_time])
 
-    graph_lists = graph_list()
-    source_vertex = "source"
-    goal_vertex = "goal"
-    max_capacity = 1000
 
     for person, times in times_per_person.items():
         graph_lists = append_graph_list(graph_lists,
