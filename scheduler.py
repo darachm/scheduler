@@ -1,7 +1,7 @@
 #!/usr/bin/python3
 
-import igraph
-#import networkx
+#import igraph
+import networkx
 import argparse
 import csv
 import os
@@ -101,11 +101,13 @@ class graph_list():
         self.tl0 = []
         self.tl1 = []
         self.cl = []
-    def append(self,nel,ntl0,ntl1,ncl):
+        self.weightl = []
+    def append(self,nel,ntl0,ntl1,ncl,nweightl=0):
         self.el.append(nel)   # list of tuples of edges
         self.tl0.append(ntl0) # type of source
         self.tl1.append(ntl1) # type of target
         self.cl.append(ncl)   # list of capacity of that edge
+        self.weightl.append(nweightl)   # list of weights
         return(self)
 
 if __name__ == "__main__":
@@ -126,10 +128,13 @@ if __name__ == "__main__":
     source_vertex = "source"
     goal_vertex = "goal"
     room_vertex = "rooms"
+#
     max_capacity = 1000
-    room_capacity = .5
-    meeting_capacity = .5
-
+#
+    person_capacity = 10
+    room_capacity = 1
+    meeting_capacity = 1
+    a_cost = 1
 
     for each_meeting in meetings:
         this_meeting_id = each_meeting[0]
@@ -145,7 +150,7 @@ if __name__ == "__main__":
                 this_meeting_id+"_"+each_participant, 
                 goal_vertex ),
                 "meeting_person", "goal", 
-                (len(participants)-room_capacity-meeting_capacity)/len(participants) )
+                (len(participants)*person_capacity-room_capacity-meeting_capacity)/len(participants) )
 # determine the blocks of time that actually work for the meeting,
 # and those are the meeting_room_time blocks, and then all the 
 # *_time nodes are piped to or from that
@@ -156,37 +161,38 @@ if __name__ == "__main__":
                 graph_lists.append( ( \
                     this_meeting_id+"_"+this_time.isoformat(),
                     this_meeting_id+"_"+this_time.isoformat()+"_"+this_room ),
-                    "meeting_time", "meeting_time_room", len(participants) )
+                    "meeting_time", "meeting_time_room", len(participants)*person_capacity, a_cost )
                 graph_lists.append( ( \
                     this_meeting_id+"_"+this_time.isoformat()+"_"+this_room,
                     this_room+"_"+this_time.isoformat() ),
-                    "meeting_time_room", "room_time", room_capacity )
+                    "meeting_time_room", "room_time", room_capacity, a_cost )
                 graph_lists.append( ( \
                     this_room+"_"+this_time.isoformat(), room_vertex ),
                     "room_time", "rooms", room_capacity )
                 graph_lists.append( ( 
                     this_meeting_id+"_"+this_time.isoformat()+"_"+this_room, 
                     this_meeting_id ),
-                    "meeting_time_room", "meeting", meeting_capacity )
+                    "meeting_time_room", "meeting", meeting_capacity, a_cost )
                 for each_participant in participants:
                     graph_lists.append( ( 
                         this_meeting_id+"_"+this_time.isoformat()+"_"+this_room,
                         this_meeting_id+"_"+each_participant ),
                         "meeting_time_room", "meeting_person", 
-                        (len(participants)-room_capacity-meeting_capacity)/len(participants) )
+                        (len(participants)*person_capacity-room_capacity-meeting_capacity)/len(participants),
+                        a_cost )
             for each_participant in participants:
                 for this_time in z.union( people_datetimes[each_participant]):
                     graph_lists.append( ( \
                         each_participant+"_"+this_time.isoformat() ,
                         this_meeting_id+"_"+this_time.isoformat() ) ,
-                        "person_time", "meeting_time", 1 )
+                        "person_time", "meeting_time", person_capacity, a_cost )
                     graph_lists.append( ( \
                         source_vertex,
                         each_participant+"_"+this_time.isoformat() ),
-                        "source", "person_time", 1 )
+                        "source", "person_time", person_capacity )
     
     graph_lists.append( ( room_vertex, goal_vertex ),
-        "rooms", "goal", len(meetings) )
+        "rooms", "goal", len(meetings)*room_capacity )
 
     verticies = set([ edge[0] for edge in graph_lists.el ]) \
                     .union([ edge[1] for edge in graph_lists.el ])
@@ -206,32 +212,75 @@ if __name__ == "__main__":
 
 # do graph stuff
 
-    g = igraph.Graph(sanitary_edge_list,directed=True)
-    g.es["capacity"] = edge_capacity_list
+    ebunch = []
+    for i, edge in enumerate(graph_lists.el):
+        ebunch.append( (edge[0],edge[1],dict([("capacity",graph_lists.cl[i]),("type0",graph_lists.tl0[i]),("type1",graph_lists.tl1[i]),("weight",graph_lists.weightl[i])])) )
 
-    g.simplify(combine_edges=max)
-    g.vs["type"] = [     type_map[v.index] for v in list(g.vs) ]
-    g.vs["name"] = [ id_to_name[v.index] for v in list(g.vs) ]
-    g.vs["label"] = g.vs["name"]
+    G = networkx.DiGraph()
+    G.add_edges_from(ebunch)
+    networkx.write_gml(G,"full.gml")
 
-    flow = g.maxflow(name_to_id[source_vertex],name_to_id[goal_vertex],capacity="capacity")
+    total_demand = sum([ len(i[1]) for i in meetings])
+    G.nodes[source_vertex]['demand'] = -total_demand
+    G.nodes[goal_vertex]['demand']   =  total_demand
 
-    g.es["width"] = flow.flow
-    g.es["flow"] = flow.flow
+#    flowd = networkx.maximum_flow(G,_s=source_vertex,_t=goal_vertex,flow_func=None)
+#    flowd = networkx.network_simplex(G)
+    flowd = networkx.max_flow_min_cost(G,s=source_vertex,t=goal_vertex)
 
-    flowd = g.subgraph_edges(g.es.select(flow_gt=0))
-    flowd.write("flow.gml","gml")
-    g.write("test.gml","gml")
+    new_ebunch = []
+    for key in flowd:
+        for target in flowd[key]:
+            new_ebunch.append( (key, target, {'flow':flowd[key][target]}))
 
-    if debug > 0:
-        tmp = [ ( g.vs.find(name=es.source)["type"], 
-                            id_to_name[es.source], id_to_name[es.target], 
-                            es["width"] 
-                        ) for es in g.es ]
-        tmp.sort(key=lambda x: x[1])
-        for i in tmp:
-            if i[0] == "person_time":
-                print(i)
+    F = networkx.DiGraph()
+    F.add_edges_from(new_ebunch)
+
+    networkx.write_gml(F,"flow.gml")
+
+#    g = igraph.Graph(sanitary_edge_list,directed=True)
+#    g.es["capacity"] = edge_capacity_list
+#
+#    g.simplify(combine_edges=max)
+#    g.vs["type"] = [     type_map[v.index] for v in list(g.vs) ]
+#    g.vs["name"] = [ id_to_name[v.index] for v in list(g.vs) ]
+#    g.vs["label"] = g.vs["name"]
+#
+#    flow = g.maxflow(name_to_id[source_vertex],name_to_id[goal_vertex],capacity="capacity")
+#
+#    g.es["width"] = flow.flow
+#    g.es["flow"] = flow.flow
+#
+#    flowd = g.subgraph_edges(g.es.select(flow_gt=0))
+#    flowd.write("flow.gml","gml")
+#    g.write("test.gml","gml")
+
+#    g = igraph.Graph(sanitary_edge_list,directed=True)
+#    g.es["capacity"] = edge_capacity_list
+#
+#    g.simplify(combine_edges=max)
+#    g.vs["type"] = [     type_map[v.index] for v in list(g.vs) ]
+#    g.vs["name"] = [ id_to_name[v.index] for v in list(g.vs) ]
+#    g.vs["label"] = g.vs["name"]
+#
+#    flow = g.maxflow(name_to_id[source_vertex],name_to_id[goal_vertex],capacity="capacity")
+#
+#    g.es["width"] = flow.flow
+#    g.es["flow"] = flow.flow
+#
+#    flowd = g.subgraph_edges(g.es.select(flow_gt=0))
+#    flowd.write("flow.gml","gml")
+#    g.write("test.gml","gml")
+
+#    if debug > 0:
+#        tmp = [ ( g.vs.find(name=es.source)["type"], 
+#                            id_to_name[es.source], id_to_name[es.target], 
+#                            es["width"] 
+#                        ) for es in g.es ]
+#        tmp.sort(key=lambda x: x[1])
+#        for i in tmp:
+#            if i[0] == "person_time":
+#                print(i)
 
 #    layout = g.layout("kk")
 #    igraph.plot(g, "tmp.png", layout = layout, 
