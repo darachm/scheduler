@@ -11,6 +11,7 @@ import iso8601
 import math
 import datetime
 from dateutil.tz import gettz
+import matplotlib.pyplot
 
 # REFACTOR AND DOCUMENT
 
@@ -81,9 +82,7 @@ def read_dir_of_zipped_icals(path,localize_to="America/New_York"):
     return_dict = {}
     for zipped_ical in os.scandir(path):
         if zipped_ical.name.endswith('.zip'):
-            return_dict[zipped_ical.name
-                    .replace(".zip","")
-                    .replace("@nyu.edu.ical","")
+            return_dict[re.sub("@.*.zip","",zipped_ical.name)
                 ] = read_zipped_ical(zipped_ical,localize_to=localize_to)
     return(return_dict)
 
@@ -131,29 +130,30 @@ if __name__ == "__main__":
 #
     max_capacity = 1000
 #
-    person_capacity = 10
-    room_capacity = 1
-    meeting_capacity = 1
-    a_cost = 1
+    person_capacity = float(1)
+    room_capacity = float(1)
+    meeting_capacity = float(1)
+    a_cost = float(1)
 
     for each_meeting in meetings:
         this_meeting_id = each_meeting[0]
         this_meeting_possible_times = set()
-        graph_lists.append( ( this_meeting_id, goal_vertex ),
-            "meeting", "goal", meeting_capacity )
         participants = each_meeting[1]
+        graph_lists.append( ( this_meeting_id, goal_vertex ),
+            "meeting", "goal", 
+            len(participants)*person_capacity-room_capacity )
         for each_participant in participants:
             this_meeting_possible_times = \
                 this_meeting_possible_times.union(\
                     people_datetimes[each_participant])
-            graph_lists.append( ( 
-                this_meeting_id+"_"+each_participant, 
-                goal_vertex ),
-                "meeting_person", "goal", 
-                (len(participants)*person_capacity-room_capacity-meeting_capacity)/len(participants) )
-# determine the blocks of time that actually work for the meeting,
-# and those are the meeting_room_time blocks, and then all the 
-# *_time nodes are piped to or from that
+#            graph_lists.append( ( 
+#                this_meeting_id+"_"+each_participant, 
+#                goal_vertex ),
+#                "meeting_person", "goal", 
+#                (len(participants)*person_capacity-room_capacity-meeting_capacity)/len(participants), a_cost )
+#### determine the blocks of time that actually work for the meeting,
+#### and those are the meeting_room_time blocks, and then all the 
+#### *_time nodes are piped to or from that
         for this_room in room_datetimes.keys():
             z = this_meeting_possible_times.union(\
                 room_datetimes[this_room])
@@ -161,31 +161,37 @@ if __name__ == "__main__":
                 graph_lists.append( ( \
                     this_meeting_id+"_"+this_time.isoformat(),
                     this_meeting_id+"_"+this_time.isoformat()+"_"+this_room ),
-                    "meeting_time", "meeting_time_room", len(participants)*person_capacity, a_cost )
+                    "meeting_time", "meeting_time_room", len(participants)*person_capacity, 
+                    a_cost )
                 graph_lists.append( ( \
                     this_meeting_id+"_"+this_time.isoformat()+"_"+this_room,
                     this_room+"_"+this_time.isoformat() ),
-                    "meeting_time_room", "room_time", room_capacity, a_cost )
+                    "meeting_time_room", "room_time", room_capacity, 
+                    a_cost )
                 graph_lists.append( ( \
                     this_room+"_"+this_time.isoformat(), room_vertex ),
                     "room_time", "rooms", room_capacity )
                 graph_lists.append( ( 
                     this_meeting_id+"_"+this_time.isoformat()+"_"+this_room, 
                     this_meeting_id ),
-                    "meeting_time_room", "meeting", meeting_capacity, a_cost )
-                for each_participant in participants:
-                    graph_lists.append( ( 
-                        this_meeting_id+"_"+this_time.isoformat()+"_"+this_room,
-                        this_meeting_id+"_"+each_participant ),
-                        "meeting_time_room", "meeting_person", 
-                        (len(participants)*person_capacity-room_capacity-meeting_capacity)/len(participants),
-                        a_cost )
+                    "meeting_time_room", "meeting", 
+                    len(participants)*person_capacity-room_capacity, 
+                    a_cost )
+#meeting_capacity, a_cost )
+#                for each_participant in participants:
+#                    graph_lists.append( ( 
+#                        this_meeting_id+"_"+this_time.isoformat()+"_"+this_room,
+#                        this_meeting_id+"_"+each_participant ),
+#                        "meeting_time_room", "meeting_person", 
+#                        (len(participants)*person_capacity-room_capacity-meeting_capacity)/len(participants),
+#                        a_cost )
             for each_participant in participants:
                 for this_time in z.union( people_datetimes[each_participant]):
                     graph_lists.append( ( \
                         each_participant+"_"+this_time.isoformat() ,
                         this_meeting_id+"_"+this_time.isoformat() ) ,
-                        "person_time", "meeting_time", person_capacity, a_cost )
+                        "person_time", "meeting_time", person_capacity, 
+                        a_cost )
                     graph_lists.append( ( \
                         source_vertex,
                         each_participant+"_"+this_time.isoformat() ),
@@ -218,25 +224,31 @@ if __name__ == "__main__":
 
     G = networkx.DiGraph()
     G.add_edges_from(ebunch)
-    networkx.write_gml(G,"full.gml")
 
     total_demand = sum([ len(i[1]) for i in meetings])
     G.nodes[source_vertex]['demand'] = -total_demand
     G.nodes[goal_vertex]['demand']   =  total_demand
 
-#    flowd = networkx.maximum_flow(G,_s=source_vertex,_t=goal_vertex,flow_func=None)
-#    flowd = networkx.network_simplex(G)
-    flowd = networkx.max_flow_min_cost(G,s=source_vertex,t=goal_vertex)
+    networkx.write_gml(G,"full.gml")
+
+    import networksimplex
+    cost, flowd = networksimplex.network_simplex(G,demand='demand',capacity='capacity',weight='weight')
+    print( cost )
 
     new_ebunch = []
+    flow_size = []
     for key in flowd:
         for target in flowd[key]:
-            new_ebunch.append( (key, target, {'flow':flowd[key][target]}))
+            if flowd[key][target] > 0:
+                new_ebunch.append( (key, target, flowd[key][target]))
 
     F = networkx.DiGraph()
-    F.add_edges_from(new_ebunch)
+    F.add_weighted_edges_from(new_ebunch,weight='flow')
 
     networkx.write_gml(F,"flow.gml")
+
+    networkx.draw_spring(F,with_labels=True)
+    matplotlib.pyplot.show()
 
 #    g = igraph.Graph(sanitary_edge_list,directed=True)
 #    g.es["capacity"] = edge_capacity_list
