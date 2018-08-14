@@ -12,7 +12,7 @@ import copy
 import iso8601
 import math
 import datetime
-from dateutil.tz import gettz
+import dateutil.tz
 import icalendar
 
 
@@ -41,11 +41,11 @@ def parse_ical_to_datetimes(string,minute_resolution,localize_to="America/New_Yo
         if i.group("start_tz") == None:
             start = start.replace(tzinfo=datetime.timezone.utc)
         else:
-            start = start.replace(tzinfo=gettz(name=i.group("start_tz")))
+            start = start.replace(tzinfo=dateutil.tz.gettz(name=i.group("start_tz")))
         if i.group("end_tz") == None:
             end = end.replace(tzinfo=datetime.timezone.utc)
         else:
-            end = end.replace(tzinfo=gettz(name=i.group("end_tz")))
+            end = end.replace(tzinfo=dateutil.tz.gettz(name=i.group("end_tz")))
         # Then we round the minutes of the start date to the next
         # certain minutes window, and set the timezone if needed
         this_datetime = start.replace(
@@ -56,7 +56,7 @@ def parse_ical_to_datetimes(string,minute_resolution,localize_to="America/New_Yo
         while this_datetime < end:
             # we append this block of time
             possible_datetimes.append(\
-                this_datetime.astimezone(tz=gettz(name=localize_to))
+                this_datetime.astimezone(tz=dateutil.tz.gettz(name=localize_to))
                 )
             # and increment to the next block of time
             this_datetime += datetime.timedelta(minutes=minute_resolution)
@@ -301,9 +301,8 @@ if __name__ == "__main__":
             if args.debug:
                 print("a tuple kept")
             schedules.append( [ { 'meeting_id': meeting_ids[j], 
-                        'start_time': tuple_times[j], 
-                        'end_time': tuple_times[j]+datetime.timedelta(\
-                            minutes=int(local_hairball.meetings[meeting_ids[j]]['duration'])),
+                        'start_time': tuple_times[j].astimezone(dateutil.tz.tzutc()).strftime("%Y%m%dT%H%M%SZ"),
+                        'end_time': (tuple_times[j]+datetime.timedelta(minutes=int(local_hairball.meetings[meeting_ids[j]]['duration']))).astimezone(dateutil.tz.tzutc()).strftime("%Y%m%dT%H%M%SZ"),
                         'room': local_hairball.meetings[meeting_ids[j]]['room'] } \
                         for j in range(0,len(meeting_ids)) ] )
 
@@ -326,7 +325,7 @@ if __name__ == "__main__":
                 event['meeting_id'] = str(each_meeting['meeting_id'])
                 event['room'] = str(each_meeting['room'])
                 event['participants'] = str(hairball.meetings[each_meeting['meeting_id']]['persons'])
-                event['description'] = event['meeting_id'] + " happening in " +\
+                event['summary'] = event['meeting_id'] + " happening in " +\
                     event['room'] + ", with the following participants: " + \
                     event['participants']
                 event['dtstart'] = each_meeting['start_time']
