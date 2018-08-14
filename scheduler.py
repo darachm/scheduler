@@ -253,6 +253,7 @@ if __name__ == "__main__":
             except:
                 print("howd that get through")
                 print(meeting_ids[j])
+                except()
 
             try:
                 local_hairball.meetings[meeting_ids[j]]['room']
