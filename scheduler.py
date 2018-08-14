@@ -145,10 +145,9 @@ if __name__ == "__main__":
     parser.add_argument('--meetings',required=True,type=str)
     parser.add_argument('--rooms',required=True,type=str)
     parser.add_argument('--output-dir',required=True,type=str)
-    parser.add_argument('--debug',default=1,type=int)
+    parser.add_argument('--debug', action='store_true')
     parser.add_argument('--resolution',default=30,type=int)
     args = parser.parse_args()
-    debug = args.debug
 
     people_datetimes = read_dir_of_zipped_icals(args.people,
         minute_resolution=args.resolution,
@@ -218,11 +217,17 @@ if __name__ == "__main__":
 
     for tuple_times in list(itertools.product(*[hairball.meetings[i]['plausible_times'] for i in meeting_ids])):
 
+        if args.debug:
+            print("a tuple tested")
+
         local_hairball = copy.deepcopy(hairball)
 
         keep_it = 1
 
         for j in range(0,len(meeting_ids)):
+
+            if args.debug:
+                print("\t"+meeting_ids[j]+" at "+str(tuple_times[j]))
 
             time_block_list = [ tuple_times[j] + \
                     k*datetime.timedelta(minutes=args.resolution) \
@@ -235,9 +240,12 @@ if __name__ == "__main__":
     
                     try:
                         if any( [ held_room not in local_hairball.rooms_by_time[k] for k in time_block_list ] ):
-                            print("\tthat one's booked")
+                            if args.debug:
+                                print("\t\tthat one's booked")
                             continue
                     except:
+                        if args.debug:
+                            print("\t\terror in finding room times")
                         continue
     
                     for time_block in time_block_list:
@@ -248,16 +256,19 @@ if __name__ == "__main__":
     
                     local_hairball.meetings[meeting_ids[j]]['room'] =  \
                         held_room
+                    if args.debug:
+                        print("\t\tbooked "+held_room)
     
                     break
             except:
-                print("howd that get through")
-                print(meeting_ids[j])
-                except()
+                raise("howd that get through")
 
             try:
-                local_hairball.meetings[meeting_ids[j]]['room']
+                if local_hairball.meetings[meeting_ids[j]]['room'] == "":
+                    pass
             except:
+                if args.debug:
+                    print("\t\tno room found")
                 keep_it = 0
                 break
 
@@ -272,24 +283,37 @@ if __name__ == "__main__":
                             set(local_hairball.meetings[meeting_ids[j]]['persons'])
     
                     else:
+                        if args.debug:
+                            print("\t\tperson conflict")
                         keep_it = 0
                         break
 
                 except:
+                    if args.debug:
+                        print("\t\tsomething broke in the person reserving")
                     keep_it = 0
                     break
 
         if keep_it == 0:
-            print("\terp not working for me")
             continue 
 
         if keep_it == 1:
+            if args.debug:
+                print("a tuple kept")
             schedules.append( [ { 'meeting_id': meeting_ids[j], 
                         'start_time': tuple_times[j], 
+                        'end_time': tuple_times[j]+datetime.timedelta(\
+                            minutes=int(local_hairball.meetings[meeting_ids[j]]['duration'])),
                         'room': local_hairball.meetings[meeting_ids[j]]['room'] } \
                         for j in range(0,len(meeting_ids)) ] )
 
+    if args.debug:
+        print(schedules)
+
     for each_schedule in range(len(schedules)):
+
+        if args.debug:
+            print(each_schedule)
 
         with open(args.output_dir+"/set_of_schedules_"+str(each_schedule)+".ical","wb") \
             as f:
@@ -302,10 +326,11 @@ if __name__ == "__main__":
                 event['meeting_id'] = str(each_meeting['meeting_id'])
                 event['room'] = str(each_meeting['room'])
                 event['participants'] = str(hairball.meetings[each_meeting['meeting_id']]['persons'])
-                event['description'] = event['meeting_id'] + " happening in " + \
+                event['description'] = event['meeting_id'] + " happening in " +\
                     event['room'] + ", with the following participants: " + \
                     event['participants']
-                event['dtstart'] = str(each_meeting['start_time'])
+                event['dtstart'] = each_meeting['start_time']
+                event['dtend'] = each_meeting['end_time']
                 cal.add_component(event)
     
             f.write(cal.to_ical())
