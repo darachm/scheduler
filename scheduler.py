@@ -157,6 +157,19 @@ if __name__ == "__main__":
         localize_to="America/New_York")
     meetings         = read_csv_as_meetings("meetings.csv")
 
+    if args.debug:
+        print()
+        for i in people_datetimes:
+            print(i)
+            print(sorted(people_datetimes[i]))
+        print()
+        for i in room_datetimes:
+            print(i)
+            print(sorted(room_datetimes[i]))
+        print()
+        print(meetings)
+        print()
+
     hairball = hairball()
 
     all_possible_roomtimes = set()
@@ -170,14 +183,14 @@ if __name__ == "__main__":
         duration = each_meeting[1]
         participants = list(each_meeting[2])
 
-        this_meeting_possible_times = set(people_datetimes[participants[1]])
+        this_meeting_possible_times = set(people_datetimes[participants[0]])
         for each_participant in participants[1:]:
             this_meeting_possible_times = \
                 this_meeting_possible_times.intersection(\
-                    people_datetimes[each_participant])
+                    set(people_datetimes[each_participant]))
 
         this_meeting_possible_times = \
-            this_meeting_possible_times.intersection(all_possible_roomtimes)
+            this_meeting_possible_times.intersection(set(all_possible_roomtimes))
 
         this_meeting_possible_starts = sorted(list(this_meeting_possible_times))
 
@@ -199,7 +212,6 @@ if __name__ == "__main__":
             if use_it == 1:
                 starts.append(this_meeting_possible_starts[i])
 
-
         hairball.new_meeting(this_meeting_id, duration, participants, starts)
 
 
@@ -210,6 +222,16 @@ if __name__ == "__main__":
             for this_room in room_datetimes.keys():
                 if each_time in room_datetimes[this_room]:
                     hairball.set_up_room(each_time,this_room)
+
+    if args.debug:
+        for i in hairball.meetings:
+            print(i)
+            print(sorted(hairball.meetings[i]['plausible_times']))
+            print()
+        for i in hairball.persons_by_time:
+            print(i)
+            print(sorted(hairball.persons_by_time[i]))
+            print()
 
     schedules = list()
     tmp_schedules = dict()
@@ -233,7 +255,7 @@ if __name__ == "__main__":
                     k*datetime.timedelta(minutes=args.resolution) \
                     for k in range(0,-(-int(local_hairball\
                     .meetings[meeting_ids[j]]['duration'])// \
-                    int(args.resolution))) ]
+                    int(args.resolution))+1) ]
 
             try:
                 for held_room in list(local_hairball.rooms_by_time[tuple_times[j]]):
