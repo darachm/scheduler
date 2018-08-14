@@ -94,15 +94,30 @@ def read_csv_as_meetings(path):
         meetings
         ) ) )
 
-class graph_list():
+#class graph_list():
+#    def __init__(self):
+#        self.el = []
+#        self.tl0 = []
+#        self.tl1 = []
+#        self.cl = []
+#        self.weightl = []
+#    def append(self,nel,ntl0,ntl1,ncl,nweightl=0):
+#        self.el.append(nel)   # list of tuples of edges
+#        self.tl0.append(ntl0) # type of source
+#        self.tl1.append(ntl1) # type of target
+#        self.cl.append(ncl)   # list of capacity of that edge
+#        self.weightl.append(nweightl)   # list of weights
+#        return(self)
+
+class hairball():
     def __init__(self):
-        self.el = []
-        self.tl0 = []
-        self.tl1 = []
-        self.cl = []
-        self.weightl = []
-    def append(self,nel,ntl0,ntl1,ncl,nweightl=0):
-        self.el.append(nel)   # list of tuples of edges
+        self.meetings = {}
+        self.persons = {}
+        self.rooms = {}
+        self.schedule = []
+        self.minimum_window = 60
+    def append_meeting(self,meeting_id,meeting_persons,meeting_rooms,meeting_times):
+        self.meetings[meeting_id]
         self.tl0.append(ntl0) # type of source
         self.tl1.append(ntl1) # type of target
         self.cl.append(ncl)   # list of capacity of that edge
@@ -123,178 +138,28 @@ if __name__ == "__main__":
     room_datetimes   = read_dir_of_zipped_icals(args.rooms)
     meetings         = read_csv_as_meetings("meetings.csv")
 
-    graph_lists = graph_list()
-    source_vertex = "source"
-    goal_vertex = "goal"
-    room_vertex = "rooms"
-#
-    max_capacity = 1000
-#
-    person_capacity = float(1)
-    room_capacity = float(1)
-    meeting_capacity = float(1)
-    a_cost = float(1)
+    hairball = hairball()
 
     for each_meeting in meetings:
         this_meeting_id = each_meeting[0]
-        this_meeting_possible_times = set()
         participants = each_meeting[1]
-        graph_lists.append( ( this_meeting_id, goal_vertex ),
-            "meeting", "goal", 
-            len(participants)*person_capacity-room_capacity )
+        this_meeting_possible_times = set()
         for each_participant in participants:
             this_meeting_possible_times = \
                 this_meeting_possible_times.union(\
                     people_datetimes[each_participant])
-#            graph_lists.append( ( 
-#                this_meeting_id+"_"+each_participant, 
-#                goal_vertex ),
-#                "meeting_person", "goal", 
-#                (len(participants)*person_capacity-room_capacity-meeting_capacity)/len(participants), a_cost )
-#### determine the blocks of time that actually work for the meeting,
-#### and those are the meeting_room_time blocks, and then all the 
-#### *_time nodes are piped to or from that
         for this_room in room_datetimes.keys():
-            z = this_meeting_possible_times.union(\
+            this_meeting_room_possibile_times = \
+                this_meeting_possible_times.union(\
                 room_datetimes[this_room])
-            for this_time in z:
-                graph_lists.append( ( \
-                    this_meeting_id+"_"+this_time.isoformat(),
-                    this_meeting_id+"_"+this_time.isoformat()+"_"+this_room ),
-                    "meeting_time", "meeting_time_room", len(participants)*person_capacity, 
-                    a_cost )
-                graph_lists.append( ( \
-                    this_meeting_id+"_"+this_time.isoformat()+"_"+this_room,
-                    this_room+"_"+this_time.isoformat() ),
-                    "meeting_time_room", "room_time", room_capacity, 
-                    a_cost )
-                graph_lists.append( ( \
-                    this_room+"_"+this_time.isoformat(), room_vertex ),
-                    "room_time", "rooms", room_capacity )
-                graph_lists.append( ( 
-                    this_meeting_id+"_"+this_time.isoformat()+"_"+this_room, 
-                    this_meeting_id ),
-                    "meeting_time_room", "meeting", 
-                    len(participants)*person_capacity-room_capacity, 
-                    a_cost )
-#meeting_capacity, a_cost )
-#                for each_participant in participants:
-#                    graph_lists.append( ( 
-#                        this_meeting_id+"_"+this_time.isoformat()+"_"+this_room,
-#                        this_meeting_id+"_"+each_participant ),
-#                        "meeting_time_room", "meeting_person", 
-#                        (len(participants)*person_capacity-room_capacity-meeting_capacity)/len(participants),
-#                        a_cost )
+        hairball.meetings
+
+            for this_time in this_meeting_room_possibile_times:
+                print(this_time)
             for each_participant in participants:
-                for this_time in z.union( people_datetimes[each_participant]):
-                    graph_lists.append( ( \
-                        each_participant+"_"+this_time.isoformat() ,
-                        this_meeting_id+"_"+this_time.isoformat() ) ,
-                        "person_time", "meeting_time", person_capacity, 
-                        a_cost )
-                    graph_lists.append( ( \
-                        source_vertex,
-                        each_participant+"_"+this_time.isoformat() ),
-                        "source", "person_time", person_capacity )
-    
-    graph_lists.append( ( room_vertex, goal_vertex ),
-        "rooms", "goal", len(meetings)*room_capacity )
+                pass#print("Participant "+each_participant)
+                for this_time in this_meeting_room_possibile_times.union( people_datetimes[each_participant]):
+                    pass#print("Time "+str(this_time))
 
-    verticies = set([ edge[0] for edge in graph_lists.el ]) \
-                    .union([ edge[1] for edge in graph_lists.el ])
 
-    name_to_id = dict(zip(verticies,list(range(0,len(verticies)))))
-    id_to_name = dict(zip(list(range(0,len(verticies))),verticies))
-
-    sanitary_edge_list = [ (name_to_id[edge[0]],name_to_id[edge[1]]) 
-        for edge in graph_lists.el ]
-
-    edge_capacity_list = graph_lists.cl
-
-    type_map = {}
-    for i, edge in enumerate(graph_lists.el):
-        type_map[name_to_id[edge[0]]] = graph_lists.tl0[i]
-        type_map[name_to_id[edge[1]]] = graph_lists.tl1[i]
-
-# do graph stuff
-
-    ebunch = []
-    for i, edge in enumerate(graph_lists.el):
-        ebunch.append( (edge[0],edge[1],dict([("capacity",graph_lists.cl[i]),("type0",graph_lists.tl0[i]),("type1",graph_lists.tl1[i]),("weight",graph_lists.weightl[i])])) )
-
-    G = networkx.DiGraph()
-    G.add_edges_from(ebunch)
-
-    total_demand = sum([ len(i[1]) for i in meetings])
-    G.nodes[source_vertex]['demand'] = -total_demand
-    G.nodes[goal_vertex]['demand']   =  total_demand
-
-    networkx.write_gml(G,"full.gml")
-
-    import networksimplex
-    cost, flowd = networksimplex.network_simplex(G,demand='demand',capacity='capacity',weight='weight')
-    print( cost )
-
-    new_ebunch = []
-    flow_size = []
-    for key in flowd:
-        for target in flowd[key]:
-            if flowd[key][target] > 0:
-                new_ebunch.append( (key, target, flowd[key][target]))
-
-    F = networkx.DiGraph()
-    F.add_weighted_edges_from(new_ebunch,weight='flow')
-
-    networkx.write_gml(F,"flow.gml")
-
-    networkx.draw_spring(F,with_labels=True)
-    matplotlib.pyplot.show()
-
-#    g = igraph.Graph(sanitary_edge_list,directed=True)
-#    g.es["capacity"] = edge_capacity_list
-#
-#    g.simplify(combine_edges=max)
-#    g.vs["type"] = [     type_map[v.index] for v in list(g.vs) ]
-#    g.vs["name"] = [ id_to_name[v.index] for v in list(g.vs) ]
-#    g.vs["label"] = g.vs["name"]
-#
-#    flow = g.maxflow(name_to_id[source_vertex],name_to_id[goal_vertex],capacity="capacity")
-#
-#    g.es["width"] = flow.flow
-#    g.es["flow"] = flow.flow
-#
-#    flowd = g.subgraph_edges(g.es.select(flow_gt=0))
-#    flowd.write("flow.gml","gml")
-#    g.write("test.gml","gml")
-
-#    g = igraph.Graph(sanitary_edge_list,directed=True)
-#    g.es["capacity"] = edge_capacity_list
-#
-#    g.simplify(combine_edges=max)
-#    g.vs["type"] = [     type_map[v.index] for v in list(g.vs) ]
-#    g.vs["name"] = [ id_to_name[v.index] for v in list(g.vs) ]
-#    g.vs["label"] = g.vs["name"]
-#
-#    flow = g.maxflow(name_to_id[source_vertex],name_to_id[goal_vertex],capacity="capacity")
-#
-#    g.es["width"] = flow.flow
-#    g.es["flow"] = flow.flow
-#
-#    flowd = g.subgraph_edges(g.es.select(flow_gt=0))
-#    flowd.write("flow.gml","gml")
-#    g.write("test.gml","gml")
-
-#    if debug > 0:
-#        tmp = [ ( g.vs.find(name=es.source)["type"], 
-#                            id_to_name[es.source], id_to_name[es.target], 
-#                            es["width"] 
-#                        ) for es in g.es ]
-#        tmp.sort(key=lambda x: x[1])
-#        for i in tmp:
-#            if i[0] == "person_time":
-#                print(i)
-
-#    layout = g.layout("kk")
-#    igraph.plot(g, "tmp.png", layout = layout, 
-#        edge_width=[0.0+3*width for width in g.es["width"]])
 
