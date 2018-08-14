@@ -7,10 +7,14 @@ import csv
 import os
 import zipfile
 import re
+import itertools
+import copy
 import iso8601
 import math
 import datetime
 from dateutil.tz import gettz
+import icalendar
+
 
 # REFACTOR AND DOCUMENT
 
@@ -118,14 +122,21 @@ class hairball():
     def __init__(self):
         self.meetings = {}
         self.persons_by_time = {}
-    def append_meeting(self,meeting_id,meeting_persons,meeting_times):
-        self.meetings[meeting_id] = { 'persons': meeting_persons, 'plausible_times': meeting_times }
+        self.rooms_by_time = {}
+    def new_meeting(self,meeting_id,duration,meeting_persons,meeting_times):
+        self.meetings[meeting_id] = { 'persons': meeting_persons, 
+            'duration': duration, 'plausible_times': meeting_times }
         return(self)
     def set_up_people(self,some_start_time,persons):
         try:
             self.persons_by_time[some_start_time] = self.persons_by_time[some_start_time].union(set(persons))
         except:
             self.persons_by_time[some_start_time] = set(persons)
+    def set_up_room(self,some_start_time,a_room):
+        try:
+            self.rooms_by_time[some_start_time] = self.rooms_by_time[some_start_time].union(set([a_room]))
+        except:
+            self.rooms_by_time[some_start_time] = set([a_room])
 
 if __name__ == "__main__":
 
@@ -133,6 +144,7 @@ if __name__ == "__main__":
     parser.add_argument('--people',required=True,type=str)
     parser.add_argument('--meetings',required=True,type=str)
     parser.add_argument('--rooms',required=True,type=str)
+    parser.add_argument('--output-dir',required=True,type=str)
     parser.add_argument('--debug',default=1,type=int)
     parser.add_argument('--resolution',default=30,type=int)
     args = parser.parse_args()
@@ -148,54 +160,155 @@ if __name__ == "__main__":
 
     hairball = hairball()
 
+    all_possible_roomtimes = set()
+    for each_room in room_datetimes:
+        all_possible_roomtimes = \
+            all_possible_roomtimes.union(room_datetimes[each_room])
+
     for each_meeting in meetings:
 
         this_meeting_id = each_meeting[0]
         duration = each_meeting[1]
-        participants = each_meeting[2]
+        participants = list(each_meeting[2])
 
-        this_meeting_possible_times = set()
-
-        for each_participant in participants:
+        this_meeting_possible_times = set(people_datetimes[participants[1]])
+        for each_participant in participants[1:]:
             this_meeting_possible_times = \
-                this_meeting_possible_times.union(\
+                this_meeting_possible_times.intersection(\
                     people_datetimes[each_participant])
 
-        for this_room in room_datetimes.keys():
-            this_meeting_room_possibile_times = \
-                this_meeting_possible_times.union(\
-                room_datetimes[this_room])
+        this_meeting_possible_times = \
+            this_meeting_possible_times.intersection(all_possible_roomtimes)
 
         this_meeting_possible_starts = sorted(list(this_meeting_possible_times))
+
         starts = list()
 
         for i in range(len(this_meeting_possible_starts)):
+
             use_it = 1
+
             for j in range(1,-(-int(duration)//int(args.resolution))):
-                if  (this_meeting_possible_starts[i]+datetime.timedelta(minutes=args.resolution)*j) not in this_meeting_possible_times:
+
+                if  (this_meeting_possible_starts[i]+\
+                        datetime.timedelta(minutes=args.resolution)*j) \
+                        not in this_meeting_possible_times:
+
                     use_it = 0
                     break
+
             if use_it == 1:
                 starts.append(this_meeting_possible_starts[i])
 
 
-        hairball.append_meeting(this_meeting_id, participants, starts)
+        hairball.new_meeting(this_meeting_id, duration, participants, starts)
 
 
     for each_meeting_id in hairball.meetings.keys():
         for each_time in hairball.meetings[each_meeting_id]['plausible_times']:
             hairball.set_up_people(each_time,hairball.meetings[each_meeting_id]['persons'])
 
+            for this_room in room_datetimes.keys():
+                if each_time in room_datetimes[this_room]:
+                    hairball.set_up_room(each_time,this_room)
 
-    print(hairball.persons_by_time)
-        
+    schedules = list()
+    tmp_schedules = dict()
+    meeting_ids = list(hairball.meetings.keys())
 
-# next, create some sort of iterator thing that will try every combination of
-#   meeting start times
+    for tuple_times in list(itertools.product(*[hairball.meetings[i]['plausible_times'] for i in meeting_ids])):
 
-# it should make a copy of the hairball persons by time before starting, and
-#   delete people out of timeslots as it goes, if it can't delete then fail
+        local_hairball = copy.deepcopy(hairball)
 
-# also implement rooms like the people, and do the same before persons
+        keep_it = 1
+
+        for j in range(0,len(meeting_ids)):
+
+            time_block_list = [ tuple_times[j] + \
+                    k*datetime.timedelta(minutes=args.resolution) \
+                    for k in range(0,-(-int(local_hairball\
+                    .meetings[meeting_ids[j]]['duration'])// \
+                    int(args.resolution))) ]
+
+            try:
+                for held_room in list(local_hairball.rooms_by_time[tuple_times[j]]):
+    
+                    try:
+                        if any( [ held_room not in local_hairball.rooms_by_time[k] for k in time_block_list ] ):
+                            print("\tthat one's booked")
+                            continue
+                    except:
+                        continue
+    
+                    for time_block in time_block_list:
+    
+                        local_hairball.rooms_by_time[time_block] = \
+                            local_hairball.rooms_by_time[time_block] - \
+                            set([held_room])
+    
+                    local_hairball.meetings[meeting_ids[j]]['room'] =  \
+                        held_room
+    
+                    break
+            except:
+                print("howd that get through")
+                print(meeting_ids[j])
+
+            try:
+                local_hairball.meetings[meeting_ids[j]]['room']
+            except:
+                keep_it = 0
+                break
+
+            for time_block in time_block_list:
+
+                try:
+                    if set(local_hairball.meetings[meeting_ids[j]]['persons'])\
+                            <= local_hairball.persons_by_time[time_block] :
+    
+                        local_hairball.persons_by_time[time_block] = \
+                            local_hairball.persons_by_time[time_block] - \
+                            set(local_hairball.meetings[meeting_ids[j]]['persons'])
+    
+                    else:
+                        keep_it = 0
+                        break
+
+                except:
+                    keep_it = 0
+                    break
+
+        if keep_it == 0:
+            print("\terp not working for me")
+            continue 
+
+        if keep_it == 1:
+            schedules.append( [ { 'meeting_id': meeting_ids[j], 
+                        'start_time': tuple_times[j], 
+                        'room': local_hairball.meetings[meeting_ids[j]]['room'] } \
+                        for j in range(0,len(meeting_ids)) ] )
+
+    for each_schedule in range(len(schedules)):
+
+        with open(args.output_dir+"/set_of_schedules_"+str(each_schedule)+".ical","wb") \
+            as f:
+
+            cal = icalendar.Calendar()
+    
+            for each_meeting in schedules[each_schedule]:
+    
+                event = icalendar.Event()
+                event['meeting_id'] = str(each_meeting['meeting_id'])
+                event['room'] = str(each_meeting['room'])
+                event['participants'] = str(hairball.meetings[each_meeting['meeting_id']]['persons'])
+                event['description'] = event['meeting_id'] + " happening in " + \
+                    event['room'] + ", with the following participants: " + \
+                    event['participants']
+                event['dtstart'] = str(each_meeting['start_time'])
+                cal.add_component(event)
+    
+            f.write(cal.to_ical())
+
+
 
 
