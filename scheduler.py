@@ -15,15 +15,11 @@ import datetime
 import dateutil.tz
 import icalendar
 
-
 # REFACTOR AND DOCUMENT
-
 
 # Regex for finding the start and end times in date ranges from
 # google ical format
 find_time_range = re.compile(r"BEGIN:VEVENT.*?DTSTART(?:;TZID=(?P<start_tz>[^:]+))?:(?P<start>[\dT]+Z?).*?DTEND(?:;TZID=(?P<end_tz>[^:]+))?:(?P<end>[\dT]+Z?).*?END:VEVENT")
-
-# TODO FIX timezone issues. Currently it ignores.
 
 # This takes an ical file, finds the start and end times, then cuts
 # them up into blocks of a certain minutes resolution, default 15.
@@ -64,6 +60,7 @@ def parse_ical_to_datetimes(string,minute_resolution,localize_to="America/New_Yo
     # be free, discretized according to the setting
     return(possible_datetimes)
 
+
 # This takes a zipped ical and tries to open all the calendars inside
 # (should be one) and then parse and extend each one
 def read_zipped_ical(zipped_ical, minute_resolution, 
@@ -82,6 +79,7 @@ def read_zipped_ical(zipped_ical, minute_resolution,
                     )   )
     return(set(parsed_ical))
 
+
 # This reads a dir of zipped files and if it's a zip then tries to
 # handle it
 def read_dir_of_zipped_icals(path,minute_resolution,
@@ -95,6 +93,7 @@ def read_dir_of_zipped_icals(path,minute_resolution,
                     localize_to=localize_to)
     return(return_dict)
 
+
 def read_csv_as_meetings(path):
     with open(path,"r") as f:
         meetings = list(csv.reader(f))[1:]
@@ -103,20 +102,6 @@ def read_csv_as_meetings(path):
         meetings
         ) ) )
 
-#class graph_list():
-#    def __init__(self):
-#        self.el = []
-#        self.tl0 = []
-#        self.tl1 = []
-#        self.cl = []
-#        self.weightl = []
-#    def append(self,nel,ntl0,ntl1,ncl,nweightl=0):
-#        self.el.append(nel)   # list of tuples of edges
-#        self.tl0.append(ntl0) # type of source
-#        self.tl1.append(ntl1) # type of target
-#        self.cl.append(ncl)   # list of capacity of that edge
-#        self.weightl.append(nweightl)   # list of weights
-#        return(self)
 
 class hairball():
     def __init__(self):
@@ -137,6 +122,7 @@ class hairball():
             self.rooms_by_time[some_start_time] = self.rooms_by_time[some_start_time].union(set([a_room]))
         except:
             self.rooms_by_time[some_start_time] = set([a_room])
+
 
 if __name__ == "__main__":
 
@@ -255,7 +241,7 @@ if __name__ == "__main__":
                     k*datetime.timedelta(minutes=args.resolution) \
                     for k in range(0,-(-int(local_hairball\
                     .meetings[meeting_ids[j]]['duration'])// \
-                    int(args.resolution))+1) ]
+                    int(args.resolution))) ]
 
             try:
                 for held_room in list(local_hairball.rooms_by_time[tuple_times[j]]):
@@ -315,6 +301,9 @@ if __name__ == "__main__":
                         print("\t\tsomething broke in the person reserving")
                     keep_it = 0
                     break
+
+            if keep_it == 0:
+                break 
 
         if keep_it == 0:
             continue 
