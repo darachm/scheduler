@@ -1,7 +1,6 @@
 #!/usr/bin/python3
 
 #import igraph
-import networkx
 import argparse
 import csv
 import os
@@ -44,10 +43,7 @@ def parse_ical_to_datetimes(string,minute_resolution,localize_to="America/New_Yo
             end = end.replace(tzinfo=dateutil.tz.gettz(name=i.group("end_tz")))
         # Then we round the minutes of the start date to the next
         # certain minutes window, and set the timezone if needed
-        this_datetime = start.replace(
-            minute=math.ceil(start.minute/minute_resolution)*
-                minute_resolution
-            )
+        this_datetime = start.replace(minute=(math.ceil(start.minute/minute_resolution)*minute_resolution)%60)
         # While it ain't over, 
         while this_datetime < end:
             # we append this block of time
@@ -103,6 +99,47 @@ def read_csv_as_meetings(path):
         ) ) )
 
 
+
+def format_meeting_as_ical_event(some_meeting):
+    event = icalendar.Event()
+    event['meeting_id'] = str(some_meeting['meeting_id'])
+    event['room'] = str(some_meeting['room'])
+    event['participants'] = str(some_meeting['participants'])
+    event['summary'] = event['meeting_id'] + " happening in " +\
+        event['room'] + ", with the following participants: " + \
+        event['participants']
+    event['dtstart'] = some_meeting['start_time']
+    event['dtend'] = some_meeting['end_time']
+    return(event)
+    
+
+def write_out_a_schedule(a_schedule,an_output_dir):
+    an_id = ""
+    for i in a_schedule:
+        an_id += i['start_time']
+    with open(an_output_dir+"/"+an_id+".ical","wb") as f:
+        cal = icalendar.Calendar()
+        for each_meeting in a_schedule:
+            cal.add_component(format_meeting_as_ical_event(each_meeting))
+        f.write(cal.to_ical())
+
+
+def schedule_report(a_schedule):
+    return_string = "I found a schedule that should work:\n"
+    for meeting in a_schedule:
+        return_string += "\t"
+        return_string += meeting['meeting_id'] 
+        return_string += " : "
+        return_string += str(meeting['participants'])
+        return_string += "\n"
+        return_string += "\t\t"
+        return_string += meeting['start_time'] 
+        return_string += " - "
+        return_string += meeting['start_time']
+        return_string += "\n"
+    return(return_string)
+
+
 class hairball():
     def __init__(self):
         self.meetings = {}
@@ -141,7 +178,7 @@ if __name__ == "__main__":
     room_datetimes   = read_dir_of_zipped_icals(args.rooms,
         minute_resolution=args.resolution,
         localize_to="America/New_York")
-    meetings         = read_csv_as_meetings("meetings.csv")
+    meetings         = read_csv_as_meetings(args.meetings)
 
     if args.debug:
         print()
@@ -311,39 +348,22 @@ if __name__ == "__main__":
         if keep_it == 1:
             if args.debug:
                 print("a tuple kept")
-            schedules.append( [ { 'meeting_id': meeting_ids[j], 
+            scheduled_meetings = [ { 'meeting_id': meeting_ids[j], 
                         'start_time': tuple_times[j].astimezone(dateutil.tz.tzutc()).strftime("%Y%m%dT%H%M%SZ"),
                         'end_time': (tuple_times[j]+datetime.timedelta(minutes=int(local_hairball.meetings[meeting_ids[j]]['duration']))).astimezone(dateutil.tz.tzutc()).strftime("%Y%m%dT%H%M%SZ"),
+                        'participants': local_hairball.meetings[meeting_ids[j]]['persons'],
                         'room': local_hairball.meetings[meeting_ids[j]]['room'] } \
-                        for j in range(0,len(meeting_ids)) ] )
-
-    if args.debug:
-        print(schedules)
+                        for j in range(0,len(meeting_ids)) ]
+            schedules.append(scheduled_meetings)
+            write_out_a_schedule(scheduled_meetings,args.output_dir)
+            print(schedule_report(scheduled_meetings))
 
     for each_schedule in range(len(schedules)):
 
         if args.debug:
             print(each_schedule)
 
-        with open(args.output_dir+"/set_of_schedules_"+str(each_schedule)+".ical","wb") \
-            as f:
 
-            cal = icalendar.Calendar()
-    
-            for each_meeting in schedules[each_schedule]:
-    
-                event = icalendar.Event()
-                event['meeting_id'] = str(each_meeting['meeting_id'])
-                event['room'] = str(each_meeting['room'])
-                event['participants'] = str(hairball.meetings[each_meeting['meeting_id']]['persons'])
-                event['summary'] = event['meeting_id'] + " happening in " +\
-                    event['room'] + ", with the following participants: " + \
-                    event['participants']
-                event['dtstart'] = each_meeting['start_time']
-                event['dtend'] = each_meeting['end_time']
-                cal.add_component(event)
-    
-            f.write(cal.to_ical())
 
 
 
