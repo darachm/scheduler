@@ -23,7 +23,18 @@ find_start  = r"DTSTART(?:;TZID=(?P<start_tz>[^:]+))?:(?P<start>[\dT]+Z?)\r\n"
 find_end    = r"DTEND(?:;TZID=(?P<end_tz>[^:]+))?:(?P<end>[\dT]+Z?)\r\n"
 find_rrule  = r"RRULE:(?P<rrule>.*)\r\n"
 #parse_rrule = r"(?:FREQ=(?P<freq>[^;]+);?)?(?:UNTIL=(?P<until>[^;]+);?)?(?:COUNT=(?P<count>[^;]+);?)?(?:INTERVAL=(?P<interval>[^;]+);?)?(?:BYMONTH=(?P<bymonth>[^;]+);?)?(?:BYDAY=(?P<byday>[^;]+);?)"
-parse_rrule = r"(?:FREQ=(?P<freq>[^;]+);?)?(?:UNTIL=(?P<until>[^;]+);?)?(?:COUNT=(?P<count>[^;]+);?)?(?:INTERVAL=(?P<interval>[^;]+);?)?(?:BYMONTH=(?P<bymonth>[^;]+);?)?(?:BYDAY=(?P<byday>[^;]+);?)"
+parse_freq = r"(?:FREQ=(?P<freq>[^;]+);?)"
+parse_until = r"(?:UNTIL=(?P<until>[^;]+);?)"
+parse_count = r"(?:COUNT=(?P<count>[^;]+);?)"
+parse_interval = r"(?:INTERVAL=(?P<interval>[^;]+);?)"
+parse_bymonth = r"(?:BYMONTH=(?P<bymonth>[^;]+);?)"
+parse_byday = r"(?:BYDAY=(?P<byday>[^;]+);?)"
+parse_bymonthday = r"(?:BYMONTHDAY=(?P<bymonthday>[^;]+);?)"
+
+
+def find_weeknum(z):
+    return(math.ceil((z.day + z.replace(day=1).weekday())/7))
+
 
 # This takes an ical file, finds the start and end times, then cuts
 # them up into blocks of a certain minutes resolution, default 15.
@@ -43,26 +54,43 @@ def parse_ical_to_datetimes(string,minute_resolution,
             (start, end) = (iso8601.parse_date(start), iso8601.parse_date(end)) 
         else:
             continue
-        print(search_rrule.group(0).strip())
         if search_rrule is not None:
-            parsed = re.search(parse_rrule, search_rrule.group(0).strip())
-            print(parsed)
+            parsed = re.search(parse_freq, search_rrule.group(0).strip())
             if parsed is not None:
-                (freq, until, count, interval, bymonth, byday) = \
-                    (parsed.group("freq"), parsed.group("until"), 
-                        parsed.group("count"), parsed.group("interval"), 
-                        parsed.group("bymonth"), parsed.group("byday") 
-                    )
-                if until is not None:
-                    until = iso8601.parse_date(until)
-                if bymonth is not None:
-                    bymonth = re.split(",",bymonth)
-                if byday is not None:
-                    byday = re.split(",",byday)
-                if count is None:
-                    count = 1000000
-                if interval is None:
-                    interval = 1
+                freq = parsed.group("freq")
+            else:
+                freq = None
+            parsed = re.search(parse_until, search_rrule.group(0).strip())
+            if parsed is not None:
+                until = iso8601.parse_date(parsed.group("until"))
+            else:
+                until = None
+            parsed = re.search(parse_count, search_rrule.group(0).strip())
+            if parsed is not None:
+                count = int(parsed.group("count"))
+            else:
+                count = 1000000
+            parsed = re.search(parse_interval, search_rrule.group(0).strip())
+            if parsed is not None:
+                interval = int(parsed.group("interval"))
+            else:
+                interval = 1
+            parsed = re.search(parse_bymonth, search_rrule.group(0).strip())
+            if parsed is not None:
+                bymonth = re.split(",",parsed.group("bymonth"))
+            else:
+                bymonth = None
+            parsed = re.search(parse_byday, search_rrule.group(0).strip())
+            if parsed is not None:
+                byday = re.split(",",parsed.group("byday"))
+            else:
+                byday = None
+            parsed = re.search(parse_bymonthday, search_rrule.group(0).strip())
+            if parsed is not None:
+                bymonthday = re.split(",",parsed.group("bymonthday"))
+            else:
+                bymonthday = None
+            if (args.debug is not None) and args.debug:
                 print("---------------")
                 print(freq)
                 print(until)
@@ -70,9 +98,8 @@ def parse_ical_to_datetimes(string,minute_resolution,
                 print(interval)
                 print(bymonth)
                 print(byday)
+                print(bymonthday)
                 print()
-            else:
-                (freq, until, count, interval, bymonth, byday) = (None, None, None, None, None, None)
         else:
             (freq, until, count, interval, bymonth, byday) = (None, None, None, None, None, None)
         # Set timezones
@@ -97,39 +124,75 @@ def parse_ical_to_datetimes(string,minute_resolution,
         weekday_lookup = { 'SU':6, 'MO':0, 'TU':1, 'WE':2, 'TH':3, 'FR':4, 'SA':5 }
         copy_tuple = copy.deepcopy(array_of_start_end_tuples[0])
         possible_nexts = []
-
+        #
         if freq is None:
             pass
         elif freq == "YEARLY":
+            #while (copy_tuple[0] < until) & (count > 0):
+                #for by_combos in itertools.product(*this_iter):
             pass
         elif freq == "MONTHLY":
-            pass
+            if byday is not None:
+                this_iter = [ (re.search("\d+",j).group(0),weekday_lookup[re.search("\D+",j).group(0)]) for j in byday]
+                while (copy_tuple[0] < until) & (count > 0):
+                    this_weekday = copy_tuple[0].weekday()
+                    this_monthday = copy_tuple[0].day
+                    for a_tuple in this_iter:
+                        this_adjust = datetime.timedelta(
+                            weeks=int(a_tuple[0])-find_weeknum(copy_tuple[0])-1,
+                            days=a_tuple[1]-this_weekday
+                            )
+                        possible_nexts.append( 
+                            (copy_tuple[0]+this_adjust,
+                             copy_tuple[1]+this_adjust)
+                            )
+                        count -= 1
+                    copy_tuple = ( copy_tuple[0]+datetime.timedelta(weeks=4*interval),
+                        copy_tuple[1]+datetime.timedelta(weeks=4*interval) 
+                        )
+            elif bymonthday is not None:
+                while (copy_tuple[0] < until) & (count > 0):
+                    this_monthday = copy_tuple[0].day
+                    for j in bymonthday:
+                        this_adjust = datetime.timedelta(days=int(j)-this_monthday)
+                        possible_nexts.append( 
+                            (copy_tuple[0]+this_adjust,
+                             copy_tuple[1]+this_adjust)
+                            )
+                        count -= 1
+                    copy_tuple = ( copy_tuple[0]+datetime.timedelta(weeks=4*interval),
+                        copy_tuple[1]+datetime.timedelta(weeks=4*interval) 
+                        )
+            else:
+                raise("couldn't parse a monthly repitition rule")
         elif freq == "WEEKLY":
             this_iter = [byday]
             while (copy_tuple[0] < until) & (count > 0):
-                for by_combos in itertools.product(*this_iter):
+                for by_combos in this_iter:
                     this_weekday = copy_tuple[0].weekday()
                     for k in sorted([ weekday_lookup[j]-this_weekday for j in by_combos]):
                         possible_nexts.append( 
-                                ( copy_tuple[0]+datetime.timedelta(days=k),
-                                  copy_tuple[1]+datetime.timedelta(days=k)  )
+                            (copy_tuple[0]+datetime.timedelta(days=k),
+                             copy_tuple[1]+datetime.timedelta(days=k)) 
                             )
                         count -= 1
                     copy_tuple = ( copy_tuple[0]+datetime.timedelta(weeks=interval),
-                        copy_tuple[1]+datetime.timedelta(weeks=interval) )
+                        copy_tuple[1]+datetime.timedelta(weeks=interval) 
+                        )
         elif freq == "DAILY":
             while (copy_tuple[0] < until) & (count > 0):
-                possible_nexts.append( copy_tuple[0], copy_tuple[1]  )
+                possible_nexts.append( copy_tuple )
                 count -= 1
                 copy_tuple = ( copy_tuple[0]+datetime.timedelta(days=interval),
                     copy_tuple[1]+datetime.timedelta(days=interval) 
                     )
-
-            # sort it to find min
-            # filter again for less than until while (copy_tuple[0] < array_of_start_end_tuples[0][0]+horizon) & (copy_tuple[0] < until):
-            # calculate the next one, increment to it by interval
-            print(possible_nexts)
-            
+        else:
+            raise("ran into a repitition rule I couldn't parse")
+        #
+        for each_next in possible_nexts:
+            if (each_next[0] > start_datetime) & (each_next[1] < until):
+                array_of_start_end_tuples.append(each_next)
+        #    
         for this_start, this_end in array_of_start_end_tuples:
             # While it ain't over, 
             while this_start < this_end:
@@ -264,14 +327,6 @@ if __name__ == "__main__":
     args = parser.parse_args()
 
     horizon = datetime.timedelta(weeks=args.weeks_horizon)
-
-
-    room_datetimes   = read_dir_of_zipped_icals(args.rooms,
-        minute_resolution=args.resolution,
-        localize_to="America/New_York",
-        horizon=horizon)
-
-    sys.exit()
 
     people_datetimes = read_dir_of_zipped_icals(args.people,
         minute_resolution=args.resolution,
