@@ -18,7 +18,7 @@ import icalendar
 
 # Regex for finding the start and end times in date ranges from
 # google ical format
-find_time_range = re.compile(r"BEGIN:VEVENT.*?DTSTART(?:;TZID=(?P<start_tz>[^:]+))?:(?P<start>[\dT]+Z?).*?DTEND(?:;TZID=(?P<end_tz>[^:]+))?:(?P<end>[\dT]+Z?).*?END:VEVENT")
+find_time_range = re.compile(r"BEGIN:VEVENT.*?DTSTART(?:;TZID=(?P<start_tz>[^:]+))?:(?P<start>[\dT]+Z?).*?DTEND(?:;TZID=(?P<end_tz>[^:]+))?:(?P<end>[\dT]+Z?).*?(?:RRULE:(?:FREQ=(?<freq>[^;]+);)(?:UNTIL=(?<until>[^;]+);)(?:COUNT=(?<count>[^;]+);)(?:INTERVAL=(?<interval>[^;]+);)(?:BYMONTH=(?<bymonth>[^;]+);)(?:BYDAY=(?<byday>[^;]+);)).*?END:VEVENT")
 
 # This takes an ical file, finds the start and end times, then cuts
 # them up into blocks of a certain minutes resolution, default 15.
@@ -29,6 +29,8 @@ def parse_ical_to_datetimes(string,minute_resolution,localize_to="America/New_Yo
     for i in find_time_range.finditer(string.decode("utf-8").replace("\r\n","")):
         # The two groups should match
         (start, end) = (i.group("start"), i.group("end"))
+        (freq, until) = (i.group("freq"), i.group("until"))
+        print(freq+until)
         # They each get parsed... is there a way to `map` this?
         (start, end) = (iso8601.parse_date(start), 
             iso8601.parse_date(end)) 
