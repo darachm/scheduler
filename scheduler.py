@@ -18,42 +18,127 @@ import icalendar
 
 # Regex for finding the start and end times in date ranges from
 # google ical format
-find_time_range = re.compile(r"BEGIN:VEVENT.*?DTSTART(?:;TZID=(?P<start_tz>[^:]+))?:(?P<start>[\dT]+Z?).*?DTEND(?:;TZID=(?P<end_tz>[^:]+))?:(?P<end>[\dT]+Z?).*?(?:RRULE:(?:FREQ=(?<freq>[^;]+);)(?:UNTIL=(?<until>[^;]+);)(?:COUNT=(?<count>[^;]+);)(?:INTERVAL=(?<interval>[^;]+);)(?:BYMONTH=(?<bymonth>[^;]+);)(?:BYDAY=(?<byday>[^;]+);)).*?END:VEVENT")
+find_events = r"BEGIN:VEVENT\r\n(.*\r\n)*?END:VEVENT"
+find_start  = r"DTSTART(?:;TZID=(?P<start_tz>[^:]+))?:(?P<start>[\dT]+Z?)\r\n"
+find_end    = r"DTEND(?:;TZID=(?P<end_tz>[^:]+))?:(?P<end>[\dT]+Z?)\r\n"
+find_rrule  = r"RRULE:(?P<rrule>.*)\r\n"
+#parse_rrule = r"(?:FREQ=(?P<freq>[^;]+);?)?(?:UNTIL=(?P<until>[^;]+);?)?(?:COUNT=(?P<count>[^;]+);?)?(?:INTERVAL=(?P<interval>[^;]+);?)?(?:BYMONTH=(?P<bymonth>[^;]+);?)?(?:BYDAY=(?P<byday>[^;]+);?)"
+parse_rrule = r"(?:FREQ=(?P<freq>[^;]+);?)?(?:UNTIL=(?P<until>[^;]+);?)?(?:COUNT=(?P<count>[^;]+);?)?(?:INTERVAL=(?P<interval>[^;]+);?)?(?:BYMONTH=(?P<bymonth>[^;]+);?)?(?:BYDAY=(?P<byday>[^;]+);?)"
 
 # This takes an ical file, finds the start and end times, then cuts
 # them up into blocks of a certain minutes resolution, default 15.
-def parse_ical_to_datetimes(string,minute_resolution,localize_to="America/New_York"):
+def parse_ical_to_datetimes(string,minute_resolution,
+        localize_to="America/New_York",
+        horizon=datetime.timedelta(weeks=4)):
     possible_datetimes = list()
     # We decode as utf8 and replace all line endings to slurp a 
     # string in for each ical
-    for i in find_time_range.finditer(string.decode("utf-8").replace("\r\n","")):
-        # The two groups should match
-        (start, end) = (i.group("start"), i.group("end"))
-        (freq, until) = (i.group("freq"), i.group("until"))
-        print(freq+until)
-        # They each get parsed... is there a way to `map` this?
-        (start, end) = (iso8601.parse_date(start), 
-            iso8601.parse_date(end)) 
+    for i in re.finditer(find_events,string.decode("utf-8"),re.M):
+        search_start = re.search(find_start, i.group(0), re.M)
+        search_end   = re.search(find_end  , i.group(0), re.M)
+        search_rrule = re.search(find_rrule, i.group(0), re.M)
+        # The two groups should search
+        if search_start is not None and search_end is not None:
+            (start, end) = (search_start.group("start"), search_end.group("end"))
+            (start, end) = (iso8601.parse_date(start), iso8601.parse_date(end)) 
+        else:
+            continue
+        print(search_rrule.group(0).strip())
+        if search_rrule is not None:
+            parsed = re.search(parse_rrule, search_rrule.group(0).strip())
+            print(parsed)
+            if parsed is not None:
+                (freq, until, count, interval, bymonth, byday) = \
+                    (parsed.group("freq"), parsed.group("until"), 
+                        parsed.group("count"), parsed.group("interval"), 
+                        parsed.group("bymonth"), parsed.group("byday") 
+                    )
+                if until is not None:
+                    until = iso8601.parse_date(until)
+                if bymonth is not None:
+                    bymonth = re.split(",",bymonth)
+                if byday is not None:
+                    byday = re.split(",",byday)
+                if count is None:
+                    count = 1000000
+                if interval is None:
+                    interval = 1
+                print("---------------")
+                print(freq)
+                print(until)
+                print(count)
+                print(interval)
+                print(bymonth)
+                print(byday)
+                print()
+            else:
+                (freq, until, count, interval, bymonth, byday) = (None, None, None, None, None, None)
+        else:
+            (freq, until, count, interval, bymonth, byday) = (None, None, None, None, None, None)
         # Set timezones
-        if i.group("start_tz") == None:
+        if search_start.group("start_tz") == None:
             start = start.replace(tzinfo=datetime.timezone.utc)
         else:
-            start = start.replace(tzinfo=dateutil.tz.gettz(name=i.group("start_tz")))
-        if i.group("end_tz") == None:
+            start = start.replace(tzinfo=dateutil.tz.gettz(name=search_start.group("start_tz")))
+        if search_end.group("end_tz") == None:
             end = end.replace(tzinfo=datetime.timezone.utc)
         else:
-            end = end.replace(tzinfo=dateutil.tz.gettz(name=i.group("end_tz")))
+            end = end.replace(tzinfo=dateutil.tz.gettz(name=search_end.group("end_tz")))
         # Then we round the minutes of the start date to the next
         # certain minutes window, and set the timezone if needed
-        this_datetime = start.replace(minute=(math.ceil(start.minute/minute_resolution)*minute_resolution)%60)
-        # While it ain't over, 
-        while this_datetime < end:
-            # we append this block of time
-            possible_datetimes.append(\
-                this_datetime.astimezone(tz=dateutil.tz.gettz(name=localize_to))
-                )
-            # and increment to the next block of time
-            this_datetime += datetime.timedelta(minutes=minute_resolution)
+        start_datetime = start.replace(minute=(math.ceil (start.minute/minute_resolution)*minute_resolution)%60)
+        end_datetime   =   end.replace(minute=(math.floor(start.minute/minute_resolution)*minute_resolution)%60)
+        #
+        if until is None or (until > start_datetime+horizon):
+            until = start_datetime+horizon
+        #
+        array_of_start_end_tuples = [ (start_datetime,end_datetime) ]
+        #
+        weekday_lookup = { 'SU':6, 'MO':0, 'TU':1, 'WE':2, 'TH':3, 'FR':4, 'SA':5 }
+        copy_tuple = copy.deepcopy(array_of_start_end_tuples[0])
+        possible_nexts = []
+
+        if freq is None:
+            pass
+        elif freq == "YEARLY":
+            pass
+        elif freq == "MONTHLY":
+            pass
+        elif freq == "WEEKLY":
+            this_iter = [byday]
+            while (copy_tuple[0] < until) & (count > 0):
+                for by_combos in itertools.product(*this_iter):
+                    this_weekday = copy_tuple[0].weekday()
+                    for k in sorted([ weekday_lookup[j]-this_weekday for j in by_combos]):
+                        possible_nexts.append( 
+                                ( copy_tuple[0]+datetime.timedelta(days=k),
+                                  copy_tuple[1]+datetime.timedelta(days=k)  )
+                            )
+                        count -= 1
+                    copy_tuple = ( copy_tuple[0]+datetime.timedelta(weeks=interval),
+                        copy_tuple[1]+datetime.timedelta(weeks=interval) )
+        elif freq == "DAILY":
+            while (copy_tuple[0] < until) & (count > 0):
+                possible_nexts.append( copy_tuple[0], copy_tuple[1]  )
+                count -= 1
+                copy_tuple = ( copy_tuple[0]+datetime.timedelta(days=interval),
+                    copy_tuple[1]+datetime.timedelta(days=interval) 
+                    )
+
+            # sort it to find min
+            # filter again for less than until while (copy_tuple[0] < array_of_start_end_tuples[0][0]+horizon) & (copy_tuple[0] < until):
+            # calculate the next one, increment to it by interval
+            print(possible_nexts)
+            
+        for this_start, this_end in array_of_start_end_tuples:
+            # While it ain't over, 
+            while this_start < this_end:
+                # we append this block of time
+                possible_datetimes.append(\
+                    this_start.astimezone(tz=dateutil.tz.gettz(name=localize_to))
+                    )
+                # and increment to the next block of time
+                this_start += datetime.timedelta(minutes=minute_resolution)
     # So then we return the list of blocks of time this person should
     # be free, discretized according to the setting
     return(possible_datetimes)
@@ -62,7 +147,8 @@ def parse_ical_to_datetimes(string,minute_resolution,localize_to="America/New_Yo
 # This takes a zipped ical and tries to open all the calendars inside
 # (should be one) and then parse and extend each one
 def read_zipped_ical(zipped_ical, minute_resolution, 
-        localize_to="America/New_York"):
+        localize_to="America/New_York",
+        horizon=datetime.timedelta(weeks=4)):
     with zipfile.ZipFile(zipped_ical.path) as the_zip:
         if len(the_zip.namelist()) > 1:
             print("Wait a second ... "+zipped_ical.path+
@@ -73,7 +159,8 @@ def read_zipped_ical(zipped_ical, minute_resolution,
                 parsed_ical.extend(parse_ical_to_datetimes(
                         ical_file.read(), 
                         minute_resolution=minute_resolution,
-                        localize_to=localize_to , 
+                        localize_to=localize_to,
+                        horizon=horizon
                     )   )
     return(set(parsed_ical))
 
@@ -81,14 +168,15 @@ def read_zipped_ical(zipped_ical, minute_resolution,
 # This reads a dir of zipped files and if it's a zip then tries to
 # handle it
 def read_dir_of_zipped_icals(path,minute_resolution,
-        localize_to="America/New_York"):
+        localize_to="America/New_York",horizon=datetime.timedelta(weeks=4)):
     return_dict = {}
     for zipped_ical in os.scandir(path):
         if zipped_ical.name.endswith('.zip'):
             return_dict[re.sub("@.*.zip","",zipped_ical.name)
                 ] = read_zipped_ical(zipped_ical,
                     minute_resolution=minute_resolution,
-                    localize_to=localize_to)
+                    localize_to=localize_to,
+                    horizon=horizon)
     return(return_dict)
 
 
@@ -172,14 +260,27 @@ if __name__ == "__main__":
     parser.add_argument('--output-dir',required=True,type=str)
     parser.add_argument('--debug', action='store_true')
     parser.add_argument('--resolution',default=30,type=int)
+    parser.add_argument('--weeks-horizon',default=3,type=int)
     args = parser.parse_args()
+
+    horizon = datetime.timedelta(weeks=args.weeks_horizon)
+
+
+    room_datetimes   = read_dir_of_zipped_icals(args.rooms,
+        minute_resolution=args.resolution,
+        localize_to="America/New_York",
+        horizon=horizon)
+
+    sys.exit()
 
     people_datetimes = read_dir_of_zipped_icals(args.people,
         minute_resolution=args.resolution,
-        localize_to="America/New_York")
+        localize_to="America/New_York",
+        horizon=horizon)
     room_datetimes   = read_dir_of_zipped_icals(args.rooms,
         minute_resolution=args.resolution,
-        localize_to="America/New_York")
+        localize_to="America/New_York",
+        horizon=horizon)
     meetings         = read_csv_as_meetings(args.meetings)
 
     if args.debug:
