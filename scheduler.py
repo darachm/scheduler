@@ -30,6 +30,7 @@ parse_interval = r"(?:INTERVAL=(?P<interval>[^;]+);?)"
 parse_bymonth = r"(?:BYMONTH=(?P<bymonth>[^;]+);?)"
 parse_byday = r"(?:BYDAY=(?P<byday>[^;]+);?)"
 parse_bymonthday = r"(?:BYMONTHDAY=(?P<bymonthday>[^;]+);?)"
+parse_exdate = r"(?:EXDATE=(?P<exdate>[^;]+);?)"
 
 
 def find_weeknum(z):
@@ -88,6 +89,13 @@ def parse_ical_to_datetimes(string,minute_resolution,
             parsed = re.search(parse_bymonthday, search_rrule.group(0).strip())
             if parsed is not None:
                 bymonthday = re.split(",",parsed.group("bymonthday"))
+            else:
+                bymonthday = None
+            exdates = set()
+            parsed = re.finditer(parse_exdate, search_rrule.group(0).strip())
+            if parsed is not None:
+                for each in parsed:
+                    exdates.add(iso8601.parse_date(each.group(0)))
             else:
                 bymonthday = None
             if (args.debug is not None) and args.debug:
@@ -191,7 +199,8 @@ def parse_ical_to_datetimes(string,minute_resolution,
         #
         for each_next in possible_nexts:
             if (each_next[0] > start_datetime) & (each_next[1] < until):
-                array_of_start_end_tuples.append(each_next)
+                if each_next[0] not in exdates:
+                    array_of_start_end_tuples.append(each_next)
         #    
         for this_start, this_end in array_of_start_end_tuples:
             # While it ain't over, 
@@ -204,7 +213,7 @@ def parse_ical_to_datetimes(string,minute_resolution,
                 this_start += datetime.timedelta(minutes=minute_resolution)
     # So then we return the list of blocks of time this person should
     # be free, discretized according to the setting
-    return(possible_datetimes)
+    return(list(set(possible_datetimes)))
 
 
 # This takes a zipped ical and tries to open all the calendars inside
@@ -278,7 +287,7 @@ def write_out_a_schedule(a_schedule,an_output_dir):
 
 
 def schedule_report(a_schedule):
-    return_string = "I found a schedule that should work:\n"
+    return_string = "\nI found a schedule that should work:\n"
     for meeting in a_schedule:
         return_string += "\t"
         return_string += meeting['meeting_id'] 
@@ -324,6 +333,7 @@ if __name__ == "__main__":
     parser.add_argument('--debug', action='store_true')
     parser.add_argument('--resolution',default=30,type=int)
     parser.add_argument('--weeks-horizon',default=3,type=int)
+    parser.add_argument('--threshold-fails',default=0,type=int)
     args = parser.parse_args()
 
     horizon = datetime.timedelta(weeks=args.weeks_horizon)
@@ -418,19 +428,21 @@ if __name__ == "__main__":
     tmp_schedules = dict()
     meeting_ids = list(hairball.meetings.keys())
 
-    for tuple_times in list(itertools.product(*[hairball.meetings[i]['plausible_times'] for i in meeting_ids])):
+    for tuple_times in itertools.product(*[hairball.meetings[i]['plausible_times'] for i in meeting_ids]):
 
         if args.debug:
             print("a tuple tested")
 
         local_hairball = copy.deepcopy(hairball)
 
-        keep_it = 1
+        keep_it = len(meeting_ids)
 
         for j in range(0,len(meeting_ids)):
 
             if args.debug:
                 print("\t"+meeting_ids[j]+" at "+str(tuple_times[j]))
+
+            local_hairball.meetings[meeting_ids[j]]['room'] = "NOT BOOKED"
 
             time_block_list = [ tuple_times[j] + \
                     k*datetime.timedelta(minutes=args.resolution) \
@@ -467,12 +479,12 @@ if __name__ == "__main__":
                 raise("howd that get through")
 
             try:
-                if local_hairball.meetings[meeting_ids[j]]['room'] == "":
-                    pass
+                if local_hairball.meetings[meeting_ids[j]]['room'] == "NOT BOOKED":
+                    keep_it -= 1
             except:
                 if args.debug:
                     print("\t\tno room found")
-                keep_it = 0
+                keep_it -= 1
                 break
 
             for time_block in time_block_list:
@@ -487,25 +499,26 @@ if __name__ == "__main__":
     
                     else:
                         if args.debug:
-                            print("\t\tperson conflict")
-                        keep_it = 0
+                            print("\t\tperson conflict in "+str(local_hairball.meetings[meeting_ids[j]]['persons']))
+                        keep_it -= 1
                         break
 
                 except:
                     if args.debug:
                         print("\t\tsomething broke in the person reserving")
-                    keep_it = 0
+                    keep_it -= 1
                     break
 
-            if keep_it == 0:
+            if keep_it < (len(meeting_ids) - args.threshold_fails):
                 break 
 
-        if keep_it == 0:
-            continue 
-
-        if keep_it == 1:
+        if keep_it < (len(meeting_ids) - args.threshold_fails):
             if args.debug:
-                print("a tuple kept")
+                print("It failed the threshold of less than "+str(args.threshold_fails)+" failed meetings")
+            continue 
+        else:
+            if args.debug:
+                print("a tuple kept of "+str(keep_it)+" meetings")
             scheduled_meetings = [ { 'meeting_id': meeting_ids[j], 
                         'start_time': tuple_times[j].astimezone(dateutil.tz.tzutc()).strftime("%Y%m%dT%H%M%SZ"),
                         'end_time': (tuple_times[j]+datetime.timedelta(minutes=int(local_hairball.meetings[meeting_ids[j]]['duration']))).astimezone(dateutil.tz.tzutc()).strftime("%Y%m%dT%H%M%SZ"),
